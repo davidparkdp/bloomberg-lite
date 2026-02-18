@@ -20,6 +20,7 @@ body {
 }
 #pages {
     flex: 1;
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -31,6 +32,7 @@ body {
     padding: 6px 12px;
     border-bottom: 1px solid #333;
     background: #111;
+    flex-shrink: 0;
 }
 .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
 .header-time  { color: #888; font-size: 11px; margin-left: auto; }
@@ -41,6 +43,7 @@ body {
     padding: 4px 12px;
     background: #111;
     border-bottom: 1px solid #333;
+    flex-shrink: 0;
 }
 .tab {
     padding: 3px 14px;
@@ -61,6 +64,7 @@ body {
     display: none;
     padding: 4px 6px;
     flex: 1;
+    min-height: 0;
     overflow: hidden;
 }
 .page.active { display: flex; align-items: stretch; }
