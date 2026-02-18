@@ -131,7 +131,7 @@
 <script>
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
-const PAUSE_ON_429  = 3000; // Shortened to 3 seconds
+const PAUSE_ON_429  = 3000; 
 const NUM_COLS      = 5;
 const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
@@ -152,7 +152,8 @@ function parseCSV(text) {
 
 async function loadCSV(url) {
     const r = await fetch(url);
-    return parseCSV(await r.text());
+    const text = await r.text();
+    return parseCSV(text);
 }
 
 // ── State ──
@@ -212,10 +213,11 @@ async function buildMasterList() {
         return true;
     });
 
+    // Determine layout
     const testCol = document.createElement("div");
     testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
     document.getElementById("pages").appendChild(testCol);
-    const colH = testCol.offsetHeight;
+    const colH = testCol.offsetHeight || 600; 
     document.getElementById("pages").removeChild(testCol);
 
     const rowsPerCol = Math.max(10, Math.floor(colH / 21));
@@ -235,6 +237,9 @@ async function buildMasterList() {
 function buildChrome() {
     const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
+    tabsEl.innerHTML = "";
+    pagesEl.innerHTML = "";
+
     for (let i = 0; i < numPages; i++) {
         const tab = document.createElement("button");
         tab.className = "tab" + (i===0?" active":"");
@@ -255,7 +260,7 @@ function buildChrome() {
     }
 }
 
-// ── NEW: Render placeholders immediately ──
+// ── OPTIMIZED: Render placeholders instantly ──
 function renderAllPlaceholders() {
     masterList.forEach(ticker => {
         const meta = tickerMeta[ticker];
@@ -263,11 +268,12 @@ function renderAllPlaceholders() {
         if (!colEl) return;
 
         const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
-        if (!document.getElementById(gid)) {
-            const g = document.createElement("div");
+        let g = document.getElementById(gid);
+        if (!g) {
+            g = document.createElement("div");
             g.className = "group"; g.id = gid;
             g.textContent = meta.group;
-            insertByOrder(colEl, g, meta.order - 0.5);
+            colEl.appendChild(g); 
         }
 
         const rowEl = document.createElement("div");
@@ -281,20 +287,13 @@ function renderAllPlaceholders() {
             <div class="cell-pct">...</div>
             <div class="cell-age"></div>
         `;
-        insertByOrder(colEl, rowEl, meta.order);
+        colEl.appendChild(rowEl);
     });
 }
 
 function switchPage(idx) {
     document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
-}
-
-function insertByOrder(container, el, order) {
-    el.dataset.order = order;
-    const after = [...container.children].find(c => parseFloat(c.dataset.order ?? 999) > order);
-    if (after) container.insertBefore(el, after);
-    else container.appendChild(el);
 }
 
 function renderTicker(ticker) {
@@ -348,8 +347,14 @@ async function rollingLoop() {
 async function init() {
     setStatus("Reading sheet...");
     await buildMasterList();
+    
     buildChrome();
     renderAllPlaceholders();
+    
+    // Pause briefly to let the browser paint the placeholders
+    await sleep(50); 
+    
+    setStatus("Ready.");
     rollingLoop();
 }
 
