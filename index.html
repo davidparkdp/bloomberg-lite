@@ -77,8 +77,16 @@
             gap: 1px;
         }
         .row:hover { background: #141414; }
-        .cell-ticker { font-weight: bold; color: #ffb300; cursor: pointer; text-decoration: none; }
-        .cell-ticker:hover { text-decoration: underline; color: #00ffcc; }
+        
+        /* RESTORED: Hyperlink Styling */
+        .cell-ticker a { 
+            font-weight: bold; 
+            color: #ffb300; 
+            text-decoration: none; 
+            display: block;
+        }
+        .cell-ticker a:hover { color: #00ffcc; text-decoration: underline; }
+
         .cell-name { color: #ffb300; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
         .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; }
         .cell-age { font-size: 9px; color: #ffb300; opacity: 0.6; }
@@ -130,11 +138,6 @@ function updateClock() {
     });
 }
 setInterval(updateClock, 1000);
-
-// Opens Ticker Link
-function openTicker(ticker) {
-    window.open(`https://finance.yahoo.com/quote/${ticker}`, '_blank');
-}
 
 async function buildMasterList() {
     const r = await fetch(SHEET_URL);
@@ -204,6 +207,11 @@ function buildChrome() {
     }
 }
 
+// Helper for generating the Ticker Link HTML
+function getTickerLink(t) {
+    return `<a href="https://finance.yahoo.com/quote/${t}" target="_blank">${t}</a>`;
+}
+
 function renderAllPlaceholders() {
     masterList.forEach(t => {
         const m = tickerMeta[t];
@@ -216,7 +224,7 @@ function renderAllPlaceholders() {
         const r = document.createElement("div");
         r.className = "row"; r.id = `row-${t}`;
         r.innerHTML = `
-            <div class="cell-ticker" onclick="openTicker('${t}')">${t}</div>
+            <div class="cell-ticker">${getTickerLink(t)}</div>
             <div class="cell-name">${m.name}</div>
             <div class="cell-price">...</div>
             <div class="cell-chg">...</div>
@@ -242,7 +250,7 @@ async function rollingLoop() {
                 quoteStore[t] = { c: d.c, d: d.d, dp: d.dp, ts: Date.now() };
                 row.className = `row ${up?'green':'red'}`;
                 row.innerHTML = `
-                    <div class="cell-ticker" onclick="openTicker('${t}')">${t}</div>
+                    <div class="cell-ticker">${getTickerLink(t)}</div>
                     <div class="cell-name">${tickerMeta[t].name}</div>
                     <div class="cell-price">${d.c.toFixed(2)}</div>
                     <div class="cell-chg">${up?'+':''}${d.d.toFixed(2)}</div>
