@@ -15,7 +15,7 @@ body {
     background: #0a0a0a;
     color: #00ffcc;
     font-family: monospace;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 /* ── Top bars (fixed size, never shrink) ── */
@@ -111,7 +111,7 @@ body {
 
 .row {
     display: grid;
-    grid-template-columns: 42px 72px 58px 52px 50px 18px;
+    grid-template-columns: 46px 80px 64px 56px 54px 20px;
     padding: 2px 0;
     border-bottom: 1px solid #0f0f0f;
     align-items: center;
@@ -119,16 +119,16 @@ body {
 }
 .row:hover { background: #141414; }
 
-.cell-ticker { text-align: left; font-weight: bold; font-size: 11px; color: #ffb300; }
+.cell-ticker { text-align: left; font-weight: bold; font-size: 12px; color: #ffb300; cursor: pointer; }
 .cell-name   {
-    text-align: left; font-size: 10px; color: #ffb300;
+    text-align: left; font-size: 11px; color: #ffb300;
     padding-right: 3px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
     cursor: default; opacity: 0.85;
 }
-.cell-price { text-align: right; font-size: 11px; }
-.cell-chg   { text-align: right; font-size: 11px; }
-.cell-pct   { text-align: right; font-size: 11px; }
+.cell-price { text-align: right; font-size: 12px; }
+.cell-chg   { text-align: right; font-size: 12px; }
+.cell-pct   { text-align: right; font-size: 12px; }
 .cell-age   { text-align: right; font-size: 9px; opacity: 0.35; }
 
 .green { color: #00e676; }
@@ -336,6 +336,10 @@ function renderTicker(ticker) {
         <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
         <div class="cell-age">${ageLabel(q.updatedAt)}</div>
     `;
+    // Double-click ticker to open Yahoo Finance
+    rowEl.querySelector(".cell-ticker").addEventListener("dblclick", () => {
+        window.open(`https://finance.yahoo.com/quote/${ticker}/`, "_blank");
+    });
 }
 
 setInterval(() => {
