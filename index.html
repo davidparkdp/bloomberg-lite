@@ -4,13 +4,12 @@
 <meta charset="UTF-8">
 <title>Bloomberg Lite</title>
 <style>
-* { box-sizing: border-box; }
-html, body {
-    margin: 0;
-    height: 100%;
-    overflow: hidden;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { height: 100%; }
+
 body {
+    height: 100%;
     display: flex;
     flex-direction: column;
     background: #0a0a0a;
@@ -18,32 +17,27 @@ body {
     font-family: monospace;
     font-size: 12px;
 }
-#pages {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
+
+/* ── Top bars (fixed size, never shrink) ── */
 .header {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     color: orange;
     padding: 6px 12px;
     border-bottom: 1px solid #333;
     background: #111;
-    flex-shrink: 0;
 }
 .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
 .header-time  { color: #888; font-size: 11px; margin-left: auto; }
 
 .tabs {
+    flex-shrink: 0;
     display: flex;
     gap: 2px;
     padding: 4px 12px;
     background: #111;
     border-bottom: 1px solid #333;
-    flex-shrink: 0;
 }
 .tab {
     padding: 3px 14px;
@@ -59,20 +53,27 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-/* Page fills all remaining space */
+/* ── Pages area: takes ALL remaining space ── */
+#pages {
+    flex: 1 1 0;
+    min-height: 0;   /* critical — allows flex child to shrink */
+    position: relative;
+}
+
+/* Each page is absolutely positioned to fill #pages exactly */
 .page {
     display: none;
+    position: absolute;
+    inset: 0;        /* top/right/bottom/left = 0 */
     padding: 4px 6px;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
 }
-.page.active { display: flex; align-items: stretch; }
+.page.active { display: flex; }
 
-/* Each column scrolls independently and fills full height */
+/* Columns fill the page height */
 .col {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     overflow-y: auto;
     padding: 0 3px;
     border-right: 1px solid #1a1a1a;
@@ -81,6 +82,21 @@ body {
 .col:last-child  { border-right: none; padding-right: 0; }
 .col::-webkit-scrollbar { width: 0; }
 
+/* ── Status bar (fixed size, never shrink) ── */
+.statusbar {
+    flex-shrink: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    padding: 2px 12px;
+    font-size: 10px;
+    color: #555;
+    display: flex;
+    gap: 16px;
+}
+.statusbar span { color: #555; }
+.status-warn { color: #ffaa00 !important; }
+
+/* ── Content styles ── */
 .group {
     color: orange;
     margin-top: 12px;
@@ -93,7 +109,6 @@ body {
 }
 .group:first-child { margin-top: 2px; }
 
-/* Row: ticker | name | price | chg | pct | age */
 .row {
     display: grid;
     grid-template-columns: 42px 72px 58px 52px 50px 18px;
@@ -104,26 +119,13 @@ body {
 }
 .row:hover { background: #141414; }
 
-/* Bloomberg amber for ticker + name */
-.cell-ticker {
-    text-align: left;
-    font-weight: bold;
-    font-size: 11px;
-    color: #ffb300;
+.cell-ticker { text-align: left; font-weight: bold; font-size: 11px; color: #ffb300; }
+.cell-name   {
+    text-align: left; font-size: 10px; color: #ffb300;
+    padding-right: 3px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+    cursor: default; opacity: 0.85;
 }
-.cell-name {
-    text-align: left;
-    font-size: 10px;
-    color: #ffb300;
-    padding-right: 3px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    cursor: default;
-    opacity: 0.85;
-}
-
-/* Price/chg/pct inherit green/red from row */
 .cell-price { text-align: right; font-size: 11px; }
 .cell-chg   { text-align: right; font-size: 11px; }
 .cell-pct   { text-align: right; font-size: 11px; }
@@ -132,21 +134,7 @@ body {
 .green { color: #00e676; }
 .red   { color: #ff5252; }
 
-.spinner { color: #333; padding: 30px 10px; letter-spacing: 2px; font-size: 11px; }
-
-.statusbar {
-    background: #111;
-    border-top: 1px solid #222;
-    padding: 2px 12px;
-    font-size: 10px;
-    color: #555;
-    display: flex;
-    gap: 16px;
-    height: 20px;
-    flex-shrink: 0;
-}
-.statusbar span { color: #555; }
-.status-warn { color: #ffaa00 !important; }
+.spinner { color: #333; padding: 20px 6px; letter-spacing: 2px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -163,13 +151,10 @@ body {
 </div>
 
 <script>
-// ─────────────────────────────────────────────────────────
-// CONFIG
-// ─────────────────────────────────────────────────────────
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
 const PAUSE_ON_429  = 65000;
-const NUM_COLS      = 5;   // number of display columns per page
+const NUM_COLS      = 5;
 
 const SHEETS = [
     { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
@@ -177,58 +162,39 @@ const SHEETS = [
     { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
 ];
 
-// Sheet columns (0-indexed after proper CSV parse):
-// Panel 1: A(0)=group  B(1)=ticker  C(2)=name
-// Panel 2: D(3)=group  E(4)=ticker  F(5)=name
-// Panel 3: G(6)=group  H(7)=ticker  I(8)=name
 const PANELS = [
     { groupCol: 0, tickerCol: 1, nameCol: 2 },
     { groupCol: 3, tickerCol: 4, nameCol: 5 },
     { groupCol: 6, tickerCol: 7, nameCol: 8 },
 ];
 
-// ─────────────────────────────────────────────────────────
-// CSV PARSER — properly handles quoted fields with commas
-// ─────────────────────────────────────────────────────────
+// ── CSV parser (handles quoted commas) ──
 function parseCSV(text) {
     return text.trim().split("\n").map(line => {
         const fields = [];
-        let cur = "", inQuote = false;
-        for (let i = 0; i < line.length; i++) {
-            const ch = line[i];
-            if (ch === '"') {
-                inQuote = !inQuote;
-            } else if (ch === ',' && !inQuote) {
-                fields.push(cur.trim());
-                cur = "";
-            } else {
-                cur += ch;
-            }
+        let cur = "", inQ = false;
+        for (const ch of line) {
+            if (ch === '"') { inQ = !inQ; }
+            else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
+            else { cur += ch; }
         }
         fields.push(cur.trim());
         return fields;
     });
 }
-
 async function loadCSV(url) {
-    const res  = await fetch(url);
-    const text = await res.text();
-    return parseCSV(text);
+    const r = await fetch(url);
+    return parseCSV(await r.text());
 }
 
-// ─────────────────────────────────────────────────────────
-// STATE
-// ─────────────────────────────────────────────────────────
-const quoteStore = {};  // ticker → { c, d, dp, updatedAt }
-const tickerMeta = {};  // ticker → { group, name, pageIdx, colIdx, order }
-let   masterList = [];  // ordered ticker list for rolling fetch
+// ── State ──
+const quoteStore = {};
+const tickerMeta = {};
+let   masterList = [];
 
-// ─────────────────────────────────────────────────────────
-// UTILITIES
-// ─────────────────────────────────────────────────────────
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function setStatus(msg, warn = false) {
+function setStatus(msg, warn=false) {
     const el = document.getElementById("status");
     el.textContent = msg;
     el.className = warn ? "status-warn" : "";
@@ -240,86 +206,66 @@ function setCounter(i, n) {
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent =
-        now.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })
-        + "  " + now.toLocaleTimeString("en-US", { hour12: false });
+        now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})
+        + "  " + now.toLocaleTimeString("en-US",{hour12:false});
 }
 setInterval(updateClock, 1000);
 updateClock();
 
 function ageLabel(ts) {
     if (!ts) return "";
-    const s = Math.floor((Date.now() - ts) / 1000);
-    if (s < 60)   return `${s}s`;
-    if (s < 3600) return `${Math.floor(s/60)}m`;
-    return `${Math.floor(s/3600)}h`;
+    const s = Math.floor((Date.now()-ts)/1000);
+    if (s < 60)   return s+"s";
+    if (s < 3600) return Math.floor(s/60)+"m";
+    return Math.floor(s/3600)+"h";
 }
 
-// ─────────────────────────────────────────────────────────
-// BUILD MASTER LIST
-// Reads all sheets, collects every ticker in order,
-// assigns each to a display column by distributing evenly.
-// ─────────────────────────────────────────────────────────
+// ── Build master list ──
 async function buildMasterList() {
     masterList = [];
-
     for (let si = 0; si < SHEETS.length; si++) {
         const rows = await loadCSV(SHEETS[si].url);
-
-        // Gather all items for this page in order: panel1 items, then panel2, then panel3
-        const pageItems = []; // { group, ticker, name }
+        const pageItems = [];
+        const seen = new Set();
         PANELS.forEach(p => {
             rows.forEach(row => {
                 const group  = row[p.groupCol]  || "";
                 const ticker = row[p.tickerCol] || "";
                 const name   = row[p.nameCol]   || "";
-                if (group && ticker) pageItems.push({ group, ticker, name });
+                if (group && ticker && !seen.has(ticker)) {
+                    seen.add(ticker);
+                    pageItems.push({ group, ticker, name });
+                }
             });
         });
-
-        // Deduplicate within page
-        const seen = new Set();
-        const unique = pageItems.filter(item => {
-            if (seen.has(item.ticker)) return false;
-            seen.add(item.ticker);
-            return true;
-        });
-
-        // Distribute items across NUM_COLS columns as evenly as possible
-        const perCol = Math.ceil(unique.length / NUM_COLS);
-        unique.forEach((item, idx) => {
-            const colIdx = Math.floor(idx / perCol);
-            if (tickerMeta[item.ticker]) return; // global dedup
+        const perCol = Math.ceil(pageItems.length / NUM_COLS);
+        pageItems.forEach((item, idx) => {
+            if (tickerMeta[item.ticker]) return;
             tickerMeta[item.ticker] = {
-                group:   item.group,
-                name:    item.name,
+                group: item.group, name: item.name,
                 pageIdx: si,
-                colIdx:  Math.min(colIdx, NUM_COLS - 1),
-                order:   idx
+                colIdx: Math.min(Math.floor(idx / perCol), NUM_COLS - 1),
+                order: idx
             };
             masterList.push(item.ticker);
         });
     }
 }
 
-// ─────────────────────────────────────────────────────────
-// UI CHROME — build tabs and column containers
-// ─────────────────────────────────────────────────────────
+// ── Build chrome ──
 function buildChrome() {
     const tabsEl  = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
-
     SHEETS.forEach((sheet, i) => {
         const tab = document.createElement("button");
-        tab.className = "tab" + (i === 0 ? " active" : "");
+        tab.className = "tab" + (i===0?" active":"");
         tab.textContent = sheet.label;
         tab.onclick = () => switchPage(i);
         tabsEl.appendChild(tab);
 
         const page = document.createElement("div");
-        page.className = "page" + (i === 0 ? " active" : "");
+        page.className = "page" + (i===0?" active":"");
         page.id = `page-${i}`;
-
-        // Create NUM_COLS column divs
         for (let c = 0; c < NUM_COLS; c++) {
             const col = document.createElement("div");
             col.className = "col";
@@ -337,55 +283,47 @@ function switchPage(idx) {
 }
 
 document.addEventListener("keydown", e => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+    if (e.key==="ArrowRight"||e.key==="ArrowLeft") {
         const tabs = document.querySelectorAll(".tab");
-        let cur = [...tabs].findIndex(t => t.classList.contains("active"));
-        cur = e.key === "ArrowRight"
-            ? (cur + 1) % SHEETS.length
-            : (cur - 1 + SHEETS.length) % SHEETS.length;
+        let cur = [...tabs].findIndex(t=>t.classList.contains("active"));
+        cur = e.key==="ArrowRight" ? (cur+1)%SHEETS.length : (cur-1+SHEETS.length)%SHEETS.length;
         switchPage(cur);
     }
 });
 
-// ─────────────────────────────────────────────────────────
-// RENDER — update or create a single ticker's row
-// ─────────────────────────────────────────────────────────
-function renderTicker(ticker) {
-    const q    = quoteStore[ticker];
-    const meta = tickerMeta[ticker];
-    if (!q || !meta) return;
+// ── Render one ticker ──
+function insertByOrder(container, el, order) {
+    el.dataset.order = order;
+    const after = [...container.children].find(c => parseFloat(c.dataset.order||0) > order);
+    if (after) container.insertBefore(el, after);
+    else container.appendChild(el);
+}
 
+function renderTicker(ticker) {
+    const q = quoteStore[ticker], meta = tickerMeta[ticker];
+    if (!q || !meta) return;
     const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
     if (!colEl) return;
-
-    // Remove spinner if present
     const spinner = colEl.querySelector(".spinner");
     if (spinner) spinner.remove();
 
-    // Ensure group header exists in this column
-    const groupId = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\s+/g,"-")}`;
-    let groupEl = document.getElementById(groupId);
+    const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
+    let groupEl = document.getElementById(gid);
     if (!groupEl) {
         groupEl = document.createElement("div");
         groupEl.className = "group";
-        groupEl.id = groupId;
+        groupEl.id = gid;
         groupEl.textContent = meta.group;
-        // Insert group in correct position by order
         insertByOrder(colEl, groupEl, meta.order - 0.5);
     }
 
-    const up    = q.d >= 0;
-    const color = up ? "green" : "red";
-    const sign  = up ? "+" : "";
-
+    const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
     let rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
     if (!rowEl) {
         rowEl = document.createElement("div");
         rowEl.dataset.ticker = ticker;
-        rowEl.dataset.order  = meta.order;
         insertByOrder(colEl, rowEl, meta.order);
     }
-
     rowEl.className = `row ${color}`;
     rowEl.innerHTML = `
         <div class="cell-ticker">${ticker}</div>
@@ -397,74 +335,53 @@ function renderTicker(ticker) {
     `;
 }
 
-// Insert element into container maintaining sort order by data-order attribute
-function insertByOrder(container, el, order) {
-    el.dataset.order = order;
-    const children = [...container.children];
-    const after = children.find(c => parseFloat(c.dataset.order || 0) > order);
-    if (after) container.insertBefore(el, after);
-    else container.appendChild(el);
-}
-
-// Refresh age labels every 30s
 setInterval(() => {
-    masterList.forEach(ticker => {
-        const q    = quoteStore[ticker];
-        const meta = tickerMeta[ticker];
-        if (!q || !meta) return;
-        const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
-        if (!colEl) return;
-        const rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
-        if (!rowEl) return;
-        const ageEl = rowEl.querySelector(".cell-age");
-        if (ageEl) ageEl.textContent = ageLabel(q.updatedAt);
+    masterList.forEach(t => {
+        const q = quoteStore[t], meta = tickerMeta[t];
+        if (!q||!meta) return;
+        const col = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
+        if (!col) return;
+        const row = col.querySelector(`[data-ticker="${t}"]`);
+        if (!row) return;
+        const age = row.querySelector(".cell-age");
+        if (age) age.textContent = ageLabel(q.updatedAt);
     });
 }, 30000);
 
-// ─────────────────────────────────────────────────────────
-// FETCH QUOTE
-// ─────────────────────────────────────────────────────────
+// ── Fetch ──
 async function fetchQuote(ticker) {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
     for (let attempt = 0; attempt < 5; attempt++) {
         try {
             const res = await fetch(url);
             if (res.status === 429) {
-                setStatus(`Rate limited — pausing 65s…`, true);
+                setStatus("Rate limited — pausing 65s…", true);
                 await sleep(PAUSE_ON_429);
                 continue;
             }
             if (!res.ok) return;
             const data = await res.json();
             if (data && data.c != null && data.c !== 0) {
-                quoteStore[ticker] = { c: data.c, d: data.d, dp: data.dp, updatedAt: Date.now() };
+                quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
                 renderTicker(ticker);
             }
             return;
-        } catch {
-            await sleep(2000);
-        }
+        } catch { await sleep(2000); }
     }
 }
 
-// ─────────────────────────────────────────────────────────
-// ROLLING LOOP — one ticker at a time, forever
-// ─────────────────────────────────────────────────────────
 async function rollingLoop() {
     let idx = 0;
     while (true) {
-        const ticker = masterList[idx];
-        setStatus(`Fetching ${ticker}…`);
-        setCounter(idx + 1, masterList.length);
-        await fetchQuote(ticker);
+        const t = masterList[idx];
+        setStatus(`Fetching ${t}…`);
+        setCounter(idx+1, masterList.length);
+        await fetchQuote(t);
         await sleep(CALL_DELAY_MS);
-        idx = (idx + 1) % masterList.length;
+        idx = (idx+1) % masterList.length;
     }
 }
 
-// ─────────────────────────────────────────────────────────
-// INIT
-// ─────────────────────────────────────────────────────────
 async function init() {
     buildChrome();
     setStatus("Reading sheets…");
