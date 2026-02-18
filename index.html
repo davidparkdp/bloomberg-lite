@@ -235,7 +235,7 @@ async function buildMasterList() {
     document.getElementById("pages").removeChild(testCol);
 
     // Each row is 20px, group headers ~14px, estimate 1 group per 10 tickers
-    const rowsPerCol     = Math.max(10, Math.floor(colH / 17));
+    const rowsPerCol     = Math.max(10, Math.floor(colH / 21));
     const tickersPerPage = rowsPerCol * NUM_COLS;
 
     // Assign each ticker to a page, column, and order
@@ -339,6 +339,59 @@ function renderTicker(ticker) {
         <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
         <div class="cell-age">${ageLabel(q.updatedAt)}</div>
     `;
+
+    // After first 5 renders, check if col0 overflows and repack if needed
+    if (!window._repackDone && Object.keys(quoteStore).length === 5) {
+        window._repackDone = true;
+        requestAnimationFrame(checkAndRepack);
+    }
+}
+
+function checkAndRepack() {
+    const col0 = document.getElementById("col-0-0");
+    if (!col0) return;
+    if (col0.scrollHeight <= col0.offsetHeight) return; // no overflow, we're good
+
+    // Calculate actual row height from real DOM
+    const sampleRow = col0.querySelector(".row");
+    if (!sampleRow) return;
+    const actualRowH = sampleRow.offsetHeight;
+    const colH = col0.offsetHeight;
+    const newRowsPerCol = Math.floor(colH / (actualRowH + 1)); // +1 for border
+    const newTickersPerPage = newRowsPerCol * NUM_COLS;
+
+    // Reassign all ticker metadata with new values
+    const allTickers = [...masterList];
+    // Group by page to reassign
+    let globalIdx = 0;
+    // Rebuild pages mapping
+    for (const t of allTickers) {
+        const pageIdx = Math.floor(globalIdx / newTickersPerPage);
+        const posInPage = globalIdx % newTickersPerPage;
+        const colIdx = Math.min(Math.floor(posInPage / newRowsPerCol), NUM_COLS - 1);
+        tickerMeta[t].pageIdx = pageIdx;
+        tickerMeta[t].colIdx  = colIdx;
+        tickerMeta[t].order   = posInPage;
+        globalIdx++;
+    }
+
+    // Rebuild chrome with new page count
+    const newNumPages = Math.ceil(allTickers.length / newTickersPerPage);
+    if (newNumPages !== numPages) {
+        numPages = newNumPages;
+        // Clear and rebuild tabs and pages
+        document.getElementById("tabs").innerHTML = "";
+        document.getElementById("pages").innerHTML = "";
+        buildChrome();
+    } else {
+        // Just clear all cols and re-render existing quotes
+        document.querySelectorAll(".col").forEach(c => c.innerHTML = "");
+    }
+
+    // Re-render all already-loaded tickers
+    for (const t of allTickers) {
+        if (quoteStore[t]) renderTicker(t);
+    }
 }
 
 // Refresh age labels every 30s
