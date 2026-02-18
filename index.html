@@ -5,9 +5,7 @@
 <title>Bloomberg Lite</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-
 html { height: 100%; }
-
 body {
     height: 100%;
     display: flex;
@@ -17,8 +15,6 @@ body {
     font-family: monospace;
     font-size: 13px;
 }
-
-/* ── Top bars (fixed size, never shrink) ── */
 .header {
     flex-shrink: 0;
     display: flex;
@@ -53,36 +49,29 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-/* ── Pages area: takes ALL remaining space ── */
 #pages {
     flex: 1 1 0;
-    min-height: 0;   /* critical — allows flex child to shrink */
+    min-height: 0;
     position: relative;
 }
-
-/* Each page is absolutely positioned to fill #pages exactly */
 .page {
     display: none;
     position: absolute;
-    inset: 0;        /* top/right/bottom/left = 0 */
+    inset: 0;
     padding: 4px 6px;
 }
 .page.active { display: flex; }
 
-/* Columns fill the page height */
 .col {
     flex: 1;
     min-width: 0;
-    min-height: 0;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 0 3px;
     border-right: 1px solid #1a1a1a;
 }
 .col:first-child { padding-left: 0; }
 .col:last-child  { border-right: none; padding-right: 0; }
-.col::-webkit-scrollbar { width: 0; }
 
-/* ── Status bar (fixed size, never shrink) ── */
 .statusbar {
     flex-shrink: 0;
     background: #111;
@@ -96,7 +85,6 @@ body {
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 
-/* ── Content styles ── */
 .group {
     color: orange;
     margin-top: 12px;
@@ -121,10 +109,10 @@ body {
 
 .cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
 .cell-name   {
-    text-align: left; color: #ffb300;
+    text-align: left; color: #ffb300; font-size: 11px;
     padding-right: 3px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
-    cursor: default; opacity: 0.85; font-size: 11px;
+    cursor: default; opacity: 0.85;
 }
 .cell-price { text-align: right; }
 .cell-chg   { text-align: right; }
@@ -133,12 +121,10 @@ body {
 
 .green { color: #00e676; }
 .red   { color: #ff5252; }
-
 .spinner { color: #333; padding: 20px 6px; letter-spacing: 2px; font-size: 11px; }
 </style>
 </head>
 <body>
-
 <div class="header">
     <div class="header-title">◆ BLOOMBERG LITE</div>
     <div class="header-time" id="clock"></div>
@@ -154,19 +140,8 @@ body {
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
 const PAUSE_ON_429  = 65000;
-const NUM_COLS      = 5;
-
-const SHEETS = [
-    { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
-    { label: "PAGE 2", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=1898380729&single=true&output=csv" },
-    { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
-];
-
-const PANELS = [
-    { groupCol: 0, tickerCol: 1, nameCol: 2 },
-    { groupCol: 3, tickerCol: 4, nameCol: 5 },
-    { groupCol: 6, tickerCol: 7, nameCol: 8 },
-];
+const NUM_COLS      = 5;   // display columns per page
+const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
 // ── CSV parser (handles quoted commas) ──
 function parseCSV(text) {
@@ -182,15 +157,17 @@ function parseCSV(text) {
         return fields;
     });
 }
+
 async function loadCSV(url) {
     const r = await fetch(url);
     return parseCSV(await r.text());
 }
 
 // ── State ──
-const quoteStore = {};
-const tickerMeta = {};
+const quoteStore = {};  // ticker → { c, d, dp, updatedAt }
+const tickerMeta = {};  // ticker → { group, name, pageIdx, colIdx, order }
 let   masterList = [];
+let   numPages   = 0;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -202,7 +179,6 @@ function setStatus(msg, warn=false) {
 function setCounter(i, n) {
     document.getElementById("counter").textContent = `${i} / ${n}`;
 }
-
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent =
@@ -220,49 +196,70 @@ function ageLabel(ts) {
     return Math.floor(s/3600)+"h";
 }
 
-// ── Build master list ──
+// ── Build master list from single sheet ──
+// Columns repeat in triplets: group, ticker, name (cols A/B/C, D/E/F, G/H/I, ...)
 async function buildMasterList() {
     masterList = [];
-    for (let si = 0; si < SHEETS.length; si++) {
-        const rows = await loadCSV(SHEETS[si].url);
-        const pageItems = [];
-        const seen = new Set();
-        PANELS.forEach(p => {
-            rows.forEach(row => {
-                const group  = row[p.groupCol]  || "";
-                const ticker = row[p.tickerCol] || "";
-                const name   = row[p.nameCol]   || "";
-                if (group && ticker && !seen.has(ticker)) {
-                    seen.add(ticker);
-                    pageItems.push({ group, ticker, name });
-                }
-            });
-        });
-        // col offsetHeight is ~769px, row is 20px, need buffer for group headers
-        // so use 24px effective height per item to account for group headers
-        const colH = window.innerHeight - 142; // 142 = actual header+tabs+status
-        const rowsPerCol = Math.floor(colH / 24);
-        pageItems.forEach((item, idx) => {
-            if (tickerMeta[item.ticker]) return;
-            tickerMeta[item.ticker] = {
-                group: item.group, name: item.name,
-                pageIdx: si,
-                colIdx: Math.min(Math.floor(idx / rowsPerCol), NUM_COLS - 1),
-                order: idx
-            };
-            masterList.push(item.ticker);
+    const rows = await loadCSV(SHEET_URL);
+
+    // Find max column count across all rows
+    const maxCols = Math.max(...rows.map(r => r.length));
+
+    // Collect all items in order: scan triplets left to right, top to bottom per triplet
+    const allItems = []; // { group, ticker, name }
+    for (let base = 0; base + 1 < maxCols; base += 3) {
+        const groupCol  = base;
+        const tickerCol = base + 1;
+        const nameCol   = base + 2;
+        rows.forEach(row => {
+            const group  = row[groupCol]  || "";
+            const ticker = row[tickerCol] || "";
+            const name   = row[nameCol]   || "";
+            if (group && ticker) allItems.push({ group, ticker, name });
         });
     }
+
+    // Deduplicate
+    const seen = new Set();
+    const unique = allItems.filter(item => {
+        if (seen.has(item.ticker)) return false;
+        seen.add(item.ticker);
+        return true;
+    });
+
+    // Calculate how many tickers fit per page/column
+    // col offsetHeight ≈ window.innerHeight - 142 (header+tabs+status)
+    // each row ≈ 20px, add buffer for group headers (24px effective)
+    const colH      = window.innerHeight - 142;
+    const rowsPerCol  = Math.floor(colH / 24);
+    const tickersPerPage = rowsPerCol * NUM_COLS;
+
+    // Assign each ticker to a page, column, and order
+    unique.forEach((item, idx) => {
+        const pageIdx = Math.floor(idx / tickersPerPage);
+        const posInPage = idx % tickersPerPage;
+        const colIdx  = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
+        tickerMeta[item.ticker] = {
+            group:   item.group,
+            name:    item.name,
+            pageIdx,
+            colIdx,
+            order:   posInPage
+        };
+        masterList.push(item.ticker);
+    });
+
+    numPages = Math.ceil(unique.length / tickersPerPage) || 1;
 }
 
-// ── Build chrome ──
+// ── Build chrome (tabs + col containers) ──
 function buildChrome() {
     const tabsEl  = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
-    SHEETS.forEach((sheet, i) => {
+    for (let i = 0; i < numPages; i++) {
         const tab = document.createElement("button");
         tab.className = "tab" + (i===0?" active":"");
-        tab.textContent = sheet.label;
+        tab.textContent = `PAGE ${i+1}`;
         tab.onclick = () => switchPage(i);
         tabsEl.appendChild(tab);
 
@@ -273,11 +270,10 @@ function buildChrome() {
             const col = document.createElement("div");
             col.className = "col";
             col.id = `col-${i}-${c}`;
-            col.innerHTML = `<div class="spinner">…</div>`;
             page.appendChild(col);
         }
         pagesEl.appendChild(page);
-    });
+    }
 }
 
 function switchPage(idx) {
@@ -289,24 +285,22 @@ document.addEventListener("keydown", e => {
     if (e.key==="ArrowRight"||e.key==="ArrowLeft") {
         const tabs = document.querySelectorAll(".tab");
         let cur = [...tabs].findIndex(t=>t.classList.contains("active"));
-        cur = e.key==="ArrowRight" ? (cur+1)%SHEETS.length : (cur-1+SHEETS.length)%SHEETS.length;
+        cur = e.key==="ArrowRight" ? (cur+1)%numPages : (cur-1+numPages)%numPages;
         switchPage(cur);
     }
 });
 
-// Double-click any ticker cell to open Yahoo Finance — uses delegation so it
-// survives innerHTML refreshes
+// Double-click ticker → Yahoo Finance
 document.addEventListener("dblclick", e => {
-    const tickerCell = e.target.closest(".cell-ticker");
-    if (!tickerCell) return;
-    const ticker = tickerCell.textContent.trim();
-    window.open(`https://finance.yahoo.com/quote/${ticker}/`, "_blank");
+    const cell = e.target.closest(".cell-ticker");
+    if (!cell) return;
+    window.open(`https://finance.yahoo.com/quote/${cell.textContent.trim()}/`, "_blank");
 });
 
 // ── Render one ticker ──
 function insertByOrder(container, el, order) {
     el.dataset.order = order;
-    const after = [...container.children].find(c => parseFloat(c.dataset.order||0) > order);
+    const after = [...container.children].find(c => parseFloat(c.dataset.order ?? 999) > order);
     if (after) container.insertBefore(el, after);
     else container.appendChild(el);
 }
@@ -316,17 +310,13 @@ function renderTicker(ticker) {
     if (!q || !meta) return;
     const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
     if (!colEl) return;
-    const spinner = colEl.querySelector(".spinner");
-    if (spinner) spinner.remove();
 
     const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
-    let groupEl = document.getElementById(gid);
-    if (!groupEl) {
-        groupEl = document.createElement("div");
-        groupEl.className = "group";
-        groupEl.id = gid;
-        groupEl.textContent = meta.group;
-        insertByOrder(colEl, groupEl, meta.order - 0.5);
+    if (!document.getElementById(gid)) {
+        const g = document.createElement("div");
+        g.className = "group"; g.id = gid;
+        g.textContent = meta.group;
+        insertByOrder(colEl, g, meta.order - 0.5);
     }
 
     const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
@@ -347,15 +337,13 @@ function renderTicker(ticker) {
     `;
 }
 
+// Refresh age labels every 30s
 setInterval(() => {
     masterList.forEach(t => {
         const q = quoteStore[t], meta = tickerMeta[t];
         if (!q||!meta) return;
-        const col = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
-        if (!col) return;
-        const row = col.querySelector(`[data-ticker="${t}"]`);
-        if (!row) return;
-        const age = row.querySelector(".cell-age");
+        const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-ticker="${t}"]`);
+        const age = row?.querySelector(".cell-age");
         if (age) age.textContent = ageLabel(q.updatedAt);
     });
 }, 30000);
@@ -394,33 +382,10 @@ async function rollingLoop() {
     }
 }
 
-function setPageHeight() {
-    const header = document.querySelector(".header").offsetHeight;
-    const tabs   = document.querySelector(".tabs").offsetHeight;
-    const status = document.querySelector(".statusbar").offsetHeight;
-    const h = window.innerHeight - header - tabs - status;
-    document.querySelectorAll(".page").forEach(p => {
-        p.style.height    = h + "px";
-        p.style.maxHeight = h + "px";
-        p.style.overflow  = "hidden";
-    });
-    document.querySelectorAll(".col").forEach(c => {
-        c.style.height    = h + "px";
-        c.style.maxHeight = h + "px";
-        c.style.overflowY = "auto";
-    });
-}
-
-window.addEventListener("resize", setPageHeight);
-
 async function init() {
-    buildChrome();
-    // Run after paint so offsetHeight values are accurate
-    requestAnimationFrame(() => requestAnimationFrame(setPageHeight));
-    setStatus("Reading sheets…");
+    setStatus("Reading sheet…");
     await buildMasterList();
-    // Run again after cols are populated
-    setPageHeight();
+    buildChrome();
     rollingLoop();
 }
 
