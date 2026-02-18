@@ -1,285 +1,108 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Bloomberg Lite</title>
-<style>
-* { box-sizing: border-box; }
-body {
-    margin: 0;
-    background: #0a0a0a;
-    color: #00ffcc;
-    font-family: monospace;
-    font-size: 13px;
-}
-.header {
-    display: flex;
-    align-items: center;
-    color: orange;
-    padding: 8px 12px;
-    border-bottom: 1px solid #333;
-    background: #111;
-}
-.header-title { font-size: 15px; font-weight: bold; letter-spacing: 2px; }
-.header-time  { color: #888; font-size: 12px; margin-left: auto; }
-
-.tabs {
-    display: flex;
-    gap: 2px;
-    padding: 6px 12px;
-    background: #111;
-    border-bottom: 1px solid #333;
-}
-.tab {
-    padding: 4px 16px;
-    cursor: pointer;
-    border: 1px solid #444;
-    color: #888;
-    background: transparent;
-    font-family: monospace;
-    font-size: 12px;
-    letter-spacing: 1px;
-    transition: all .15s;
-}
-.tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
-.tab:hover:not(.active) { color: #ccc; border-color: #666; }
-
-.page { display: none; padding: 10px 12px; }
-.page.active { display: flex; align-items: flex-start; }
-
-.panel {
-    flex: 1;
-    min-width: 0;
-    padding: 0 14px;
-    border-right: 1px solid #222;
-}
-.panel:first-child { padding-left: 0; }
-.panel:last-child  { border-right: none; }
-
-.group {
-    color: orange;
-    margin-top: 16px;
-    margin-bottom: 2px;
-    font-size: 11px;
-    letter-spacing: 1px;
-    border-bottom: 1px solid #222;
-    padding-bottom: 3px;
-}
-.group:first-child { margin-top: 4px; }
-
-.row {
-    display: grid;
-    grid-template-columns: 55px 130px 75px 68px 68px;
-    padding: 3px 0;
-    border-bottom: 1px solid #111;
-    align-items: center;
-}
-.row:hover { background: #141414; }
-
-.cell-ticker { text-align: left; font-weight: bold; }
-
-/* Name cell: fixed width, truncate with ellipsis, full name on hover via title attr */
-.cell-name {
-    text-align: left;
-    font-size: 11px;
-    padding-right: 8px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    cursor: default;
-}
-
-.cell-price { text-align: right; }
-.cell-chg   { text-align: right; }
-.cell-pct   { text-align: right; }
-
-.green { color: #00e676; }
-.red   { color: #ff5252; }
-
-@keyframes blink-flash {
-    0%   { opacity: 1; }
-    40%  { opacity: 0.15; }
-    100% { opacity: 1; }
-}
-.blink { animation: blink-flash .4s ease-out; }
-.spinner { color: #444; padding: 40px 20px; letter-spacing: 2px; font-size: 12px; }
-
-.statusbar {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    background: #111;
-    border-top: 1px solid #222;
-    padding: 3px 12px;
-    font-size: 11px;
-    color: #555;
-    display: flex;
-    gap: 20px;
-}
-.statusbar span { color: #777; }
-.status-warn { color: #ffaa00 !important; }
-</style>
-</head>
-<body>
-
-<div class="header">
-    <div class="header-title">◆ BLOOMBERG LITE</div>
-    <div class="header-time" id="clock"></div>
-</div>
-<div class="tabs" id="tabs"></div>
-<div id="pages"></div>
-<div class="statusbar">
-    <span id="status">Loading…</span>
-    <span id="last-update"></span>
-</div>
-
-<script>
 // ─────────────────────────────────────────────────────────
-// CONFIG
+// UPDATED SEQUENTIAL ENGINE
 // ─────────────────────────────────────────────────────────
-const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
-const REFRESH_MS    = 120000;  // 2 min between full refreshes
-const CALL_DELAY_MS = 1200;    // 1.2s between calls = ~50/min
-const PAUSE_ON_429  = 65000;   // pause 65s if rate limited, then retry
 
-const SHEETS = [
-    { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
-    { label: "PAGE 2", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=1898380729&single=true&output=csv" },
-    { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
-];
+let globalTickerList = []; // Flattened list of all unique tickers
+let tickerPointer = 0;     // Which ticker we are currently fetching
+let isUpdating = false;
 
-// Sheet columns (0-indexed):
-// Panel 1: A(0)=group  B(1)=ticker  C(2)=name
-// Panel 2: D(3)=group  E(4)=ticker  F(5)=name
-// Panel 3: G(6)=group  H(7)=ticker  I(8)=name
-const PANELS = [
-    { groupCol: 0, tickerCol: 1, nameCol: 2 },
-    { groupCol: 3, tickerCol: 4, nameCol: 5 },
-    { groupCol: 6, tickerCol: 7, nameCol: 8 },
-];
-
-// ─────────────────────────────────────────────────────────
-// UTILITIES
-// ─────────────────────────────────────────────────────────
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-function setStatus(msg, warn = false) {
-    const el = document.getElementById("status");
-    el.textContent = msg;
-    el.className = warn ? "status-warn" : "";
+// 1. Initial Setup: Load structure, but don't fetch all prices at once
+async function initialize() {
+    buildChrome();
+    await refreshStructure(); // Load CSVs and build the UI rows
+    startSequentialUpdate();  // Start the "one-by-one" loop
+    
+    // Refresh the CSV structure every 5 minutes (in case you change tickers in Sheets)
+    setInterval(refreshStructure, 300000); 
 }
 
-function updateClock() {
-    const now = new Date();
-    document.getElementById("clock").textContent =
-        now.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric" })
-        + "  " + now.toLocaleTimeString("en-US", { hour12: false });
+// 2. Load CSVs and build the UI (Prices will be blank/0 initially)
+async function refreshStructure() {
+    setStatus("Syncing Sheets...");
+    const allTickersSet = new Set();
+
+    for (let i = 0; i < SHEETS.length; i++) {
+        const rows = await loadCSV(SHEETS[i].url);
+        const pageEl = document.getElementById(`page-${i}`);
+        
+        // Build the panels for this page
+        const frag = document.createDocumentFragment();
+        PANELS.forEach(p => {
+            // Modified buildPanelDOM to handle empty/initial state
+            const node = buildInitialPanelDOM(rows, p); 
+            if (node) frag.appendChild(node);
+        });
+        
+        pageEl.innerHTML = "";
+        pageEl.appendChild(frag);
+
+        // Collect unique tickers for our global queue
+        rows.forEach(r => {
+            PANELS.forEach(p => {
+                const t = r[p.tickerCol];
+                if (t) allTickersSet.add(t);
+            });
+        });
+    }
+
+    globalTickerList = Array.from(allTickersSet);
+    initialized = true;
+    setStatus("Ready");
 }
-setInterval(updateClock, 1000);
-updateClock();
 
-// ─────────────────────────────────────────────────────────
-// SERIAL API FETCHER — one request at a time, pause on 429
-// ─────────────────────────────────────────────────────────
-let fetchLock = Promise.resolve();
+// 3. The "One-by-One" Loop
+async function startSequentialUpdate() {
+    if (isUpdating) return;
+    isUpdating = true;
 
-async function apiFetch(url) {
-    await fetchLock;
-    let resolve;
-    fetchLock = new Promise(r => { resolve = r; });
-    try {
-        await sleep(CALL_DELAY_MS);
-        for (let attempt = 0; attempt < 5; attempt++) {
-            const res = await fetch(url);
-            if (res.status === 429) {
-                const waitSec = Math.round(PAUSE_ON_429 / 1000);
-                setStatus(`Rate limited — pausing ${waitSec}s…`, true);
-                await sleep(PAUSE_ON_429);
-                continue;
-            }
-            if (!res.ok) return null;
-            return await res.json();
+    while (true) {
+        if (globalTickerList.length === 0) {
+            await sleep(2000);
+            continue;
         }
-        return null;
-    } finally {
-        resolve();
+
+        const symbol = globalTickerList[tickerPointer];
+        const data = await getQuote(symbol);
+
+        if (data) {
+            updateUIDisplay(symbol, data);
+            document.getElementById("last-update").textContent = 
+                `Last: ${symbol} @ ${new Date().toLocaleTimeString("en-US", { hour12: false })}`;
+        }
+
+        // Move to next ticker or loop back to start
+        tickerPointer = (tickerPointer + 1) % globalTickerList.length;
+        
+        // Dynamic status
+        setStatus(`Queue: ${tickerPointer + 1}/${globalTickerList.length}`);
+
+        // WAIT before the next single call
+        await sleep(CALL_DELAY_MS);
     }
 }
 
-async function getQuote(symbol) {
-    setStatus(`Fetching ${symbol}…`);
-    const data = await apiFetch(
-        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`
-    );
-    if (!data || data.c == null || data.c === 0) return null;
-    return data;
-}
+// 4. Update every instance of a ticker across all pages
+function updateUIDisplay(symbol, q) {
+    const up = q.d >= 0;
+    const colorClass = up ? "green" : "red";
+    const sign = up ? "+" : "";
 
-// ─────────────────────────────────────────────────────────
-// CSV
-// ─────────────────────────────────────────────────────────
-async function loadCSV(url) {
-    const res  = await fetch(url);
-    const text = await res.text();
-    return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
-}
-
-function extractTickers(rows) {
-    const seen = new Set(), list = [];
-    PANELS.forEach(p => rows.forEach(row => {
-        const t = row[p.tickerCol] || "", g = row[p.groupCol] || "";
-        if (t && g && !seen.has(t)) { seen.add(t); list.push(t); }
-    }));
-    return list;
-}
-
-// ─────────────────────────────────────────────────────────
-// UI CHROME
-// ─────────────────────────────────────────────────────────
-function buildChrome() {
-    const tabsEl  = document.getElementById("tabs");
-    const pagesEl = document.getElementById("pages");
-    SHEETS.forEach((sheet, i) => {
-        const tab = document.createElement("button");
-        tab.className = "tab" + (i === 0 ? " active" : "");
-        tab.textContent = sheet.label;
-        tab.onclick = () => switchPage(i);
-        tabsEl.appendChild(tab);
-
-        const page = document.createElement("div");
-        page.className = "page" + (i === 0 ? " active" : "");
-        page.id = `page-${i}`;
-        page.innerHTML = `<div class="spinner">LOADING…</div>`;
-        pagesEl.appendChild(page);
+    // Find all rows across all pages that match this ticker
+    const rows = document.querySelectorAll(`.row-ticker-${symbol.replace(/[^a-z0-9]/gi, '_')}`);
+    
+    rows.forEach(row => {
+        row.className = `row ${colorClass} row-ticker-${symbol.replace(/[^a-z0-9]/gi, '_')} blink`;
+        row.querySelector('.cell-price').textContent = q.c.toFixed(2);
+        row.querySelector('.cell-chg').textContent = `${sign}${q.d.toFixed(2)}`;
+        row.querySelector('.cell-pct').textContent = `${sign}${q.dp.toFixed(2)}%`;
+        
+        // Remove blink after animation
+        setTimeout(() => row.classList.remove('blink'), 500);
     });
 }
 
-let currentPage = 0;
-
-function switchPage(idx) {
-    currentPage = idx;
-    document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
-    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
-}
-
-// Keyboard navigation
-document.addEventListener("keydown", e => {
-    // Arrow keys — left/right
-    if (e.key === "ArrowRight") {
-        switchPage((currentPage + 1) % SHEETS.length);
-    } else if (e.key === "ArrowLeft") {
-        switchPage((currentPage - 1 + SHEETS.length) % SHEETS.length);
-    }
-    // Number keys 1, 2, 3… jump directly to that page
-    const num = parseInt(e.key);
-    if (!isNaN(num) && num >= 1 && num <= SHEETS.length) {
-        switchPage(num - 1);
-    }
-});
-
-// ─────────────────────────────────────────────────────────
-// BUILD PANEL DOM
-// ─────────────────────────────────────────────────────────
-function buildPanelDOM(rows, panel, quoteMap) {
+// Helper to build the UI before prices arrive
+function buildInitialPanelDOM(rows, panel) {
     const { groupCol, tickerCol, nameCol } = panel;
     const items = rows
         .map(r => ({
@@ -296,9 +119,6 @@ function buildPanelDOM(rows, panel, quoteMap) {
     let lastGroup = null;
 
     items.forEach(item => {
-        const q = quoteMap[item.ticker];
-        if (!q) return;
-
         if (item.group !== lastGroup) {
             lastGroup = item.group;
             const g = document.createElement("div");
@@ -307,20 +127,16 @@ function buildPanelDOM(rows, panel, quoteMap) {
             panelEl.appendChild(g);
         }
 
-        const up    = q.d >= 0;
-        const color = up ? "green" : "red";
-        const sign  = up ? "+" : "";
-
-        // Full name goes in the title attribute for hover tooltip
-        // Display shows truncated version via CSS overflow ellipsis
         const row = document.createElement("div");
-        row.className = `row ${color}`;
+        // Add a specific class so we can find this ticker later
+        const tickerClass = `row-ticker-${item.ticker.replace(/[^a-z0-9]/gi, '_')}`;
+        row.className = `row ${tickerClass}`;
         row.innerHTML = `
             <div class="cell-ticker">${item.ticker}</div>
             <div class="cell-name" title="${item.name}">${item.name}</div>
-            <div class="cell-price">${q.c.toFixed(2)}</div>
-            <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
-            <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
+            <div class="cell-price">...</div>
+            <div class="cell-chg"></div>
+            <div class="cell-pct"></div>
         `;
         panelEl.appendChild(row);
     });
@@ -328,66 +144,6 @@ function buildPanelDOM(rows, panel, quoteMap) {
     return panelEl;
 }
 
-// ─────────────────────────────────────────────────────────
-// REFRESH
-// ─────────────────────────────────────────────────────────
-let initialized = false;
-
-async function refreshPage(idx) {
-    const rows    = await loadCSV(SHEETS[idx].url);
-    const tickers = extractTickers(rows);
-
-    // Fetch all quotes — strictly one at a time
-    const quoteMap = {};
-    for (const t of tickers) {
-        quoteMap[t] = await getQuote(t);
-    }
-
-    // Build DOM and swap atomically
-    const frag = document.createDocumentFragment();
-    PANELS.forEach(p => {
-        const node = buildPanelDOM(rows, p, quoteMap);
-        if (node) frag.appendChild(node);
-    });
-
-    const pageEl = document.getElementById(`page-${idx}`);
-    if (initialized) {
-        pageEl.classList.add("blink");
-        pageEl.addEventListener("animationend", () => pageEl.classList.remove("blink"), { once: true });
-    }
-    pageEl.innerHTML = "";
-    pageEl.appendChild(frag);
-}
-
-async function refreshAll() {
-    fetchLock = Promise.resolve(); // reset queue
-    for (let i = 0; i < SHEETS.length; i++) {
-        setStatus(`Loading page ${i+1}…`);
-        await refreshPage(i);
-    }
-    initialized = true;
-    setStatus("OK");
-    document.getElementById("last-update").textContent =
-        "Updated " + new Date().toLocaleTimeString("en-US", { hour12: false });
-}
-
-// ─────────────────────────────────────────────────────────
-// KEYBOARD NAVIGATION — left/right arrows switch pages
-// ─────────────────────────────────────────────────────────
-document.addEventListener("keydown", e => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    const tabs = document.querySelectorAll(".tab");
-    const current = [...tabs].findIndex(t => t.classList.contains("active"));
-    if (e.key === "ArrowLeft"  && current > 0)               switchPage(current - 1);
-    if (e.key === "ArrowRight" && current < tabs.length - 1) switchPage(current + 1);
-});
-
-// ─────────────────────────────────────────────────────────
-// INIT
-// ─────────────────────────────────────────────────────────
+// Replace the end of your original script with:
 buildChrome();
-refreshAll();
-setInterval(refreshAll, REFRESH_MS);
-</script>
-</body>
-</html>
+initialize();
