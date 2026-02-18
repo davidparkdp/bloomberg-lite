@@ -76,7 +76,9 @@
             align-items: center;
             gap: 1px;
         }
-        .cell-ticker { font-weight: bold; color: #ffb300; }
+        .row:hover { background: #141414; }
+        .cell-ticker { font-weight: bold; color: #ffb300; cursor: pointer; text-decoration: none; }
+        .cell-ticker:hover { text-decoration: underline; color: #00ffcc; }
         .cell-name { color: #ffb300; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
         .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; }
         .cell-age { font-size: 9px; color: #ffb300; opacity: 0.6; }
@@ -117,7 +119,6 @@ function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
     
-    // Periodically update the "Age" labels for all fetched tickers
     masterList.forEach(t => {
         if (quoteStore[t]) {
             const ageEl = document.querySelector(`#row-${t} .cell-age`);
@@ -129,6 +130,11 @@ function updateClock() {
     });
 }
 setInterval(updateClock, 1000);
+
+// Opens Ticker Link
+function openTicker(ticker) {
+    window.open(`https://finance.yahoo.com/quote/${ticker}`, '_blank');
+}
 
 async function buildMasterList() {
     const r = await fetch(SHEET_URL);
@@ -144,7 +150,6 @@ async function buildMasterList() {
     }
 
     const colH = document.getElementById("pages").offsetHeight || 600;
-    // MODIFIED: Subtract 1 row (21px) from available slots
     const slotsPerCol = Math.floor((colH - 21) / 21);
 
     let curP = 0, curC = 0, curSlots = 0, lastG = "";
@@ -170,9 +175,9 @@ async function buildMasterList() {
 
 function switchPage(idx) {
     document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
-    const targetTab = document.querySelectorAll(".tab")[idx];
+    const tabs = document.querySelectorAll(".tab");
     const targetPage = document.getElementById(`page-${idx}`);
-    if (targetTab) targetTab.classList.add("active");
+    if (tabs[idx]) tabs[idx].classList.add("active");
     if (targetPage) targetPage.classList.add("active");
 }
 
@@ -210,7 +215,13 @@ function renderAllPlaceholders() {
         }
         const r = document.createElement("div");
         r.className = "row"; r.id = `row-${t}`;
-        r.innerHTML = `<div class="cell-ticker">${t}</div><div class="cell-name">${m.name}</div><div class="cell-price">...</div><div class="cell-chg">...</div><div class="cell-pct">...</div><div class="cell-age"></div>`;
+        r.innerHTML = `
+            <div class="cell-ticker" onclick="openTicker('${t}')">${t}</div>
+            <div class="cell-name">${m.name}</div>
+            <div class="cell-price">...</div>
+            <div class="cell-chg">...</div>
+            <div class="cell-pct">...</div>
+            <div class="cell-age"></div>`;
         col.appendChild(r);
     });
 }
@@ -230,7 +241,13 @@ async function rollingLoop() {
                 const up = d.d >= 0;
                 quoteStore[t] = { c: d.c, d: d.d, dp: d.dp, ts: Date.now() };
                 row.className = `row ${up?'green':'red'}`;
-                row.innerHTML = `<div class="cell-ticker">${t}</div><div class="cell-name">${tickerMeta[t].name}</div><div class="cell-price">${d.c.toFixed(2)}</div><div class="cell-chg">${up?'+':''}${d.d.toFixed(2)}</div><div class="cell-pct">${up?'+':''}${d.dp.toFixed(2)}%</div><div class="cell-age">0s</div>`;
+                row.innerHTML = `
+                    <div class="cell-ticker" onclick="openTicker('${t}')">${t}</div>
+                    <div class="cell-name">${tickerMeta[t].name}</div>
+                    <div class="cell-price">${d.c.toFixed(2)}</div>
+                    <div class="cell-chg">${up?'+':''}${d.d.toFixed(2)}</div>
+                    <div class="cell-pct">${up?'+':''}${d.dp.toFixed(2)}%</div>
+                    <div class="cell-age">0s</div>`;
             }
         } catch(e) {}
         await new Promise(ok => setTimeout(ok, CALL_DELAY_MS));
