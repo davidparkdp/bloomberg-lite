@@ -1,149 +1,109 @@
-// ─────────────────────────────────────────────────────────
-// UPDATED SEQUENTIAL ENGINE
-// ─────────────────────────────────────────────────────────
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    background: #0a0a0a;
+    color: #00ffcc;
+    font-family: monospace;
+    font-size: 13px;
+    overflow-x: hidden; /* Prevent horizontal scroll */
+}
+.header {
+    display: flex;
+    align-items: center;
+    color: orange;
+    padding: 8px 12px;
+    border-bottom: 1px solid #333;
+    background: #111;
+}
+.header-title { font-size: 15px; font-weight: bold; letter-spacing: 2px; }
+.header-time  { color: #888; font-size: 12px; margin-left: auto; }
 
-let globalTickerList = []; // Flattened list of all unique tickers
-let tickerPointer = 0;     // Which ticker we are currently fetching
-let isUpdating = false;
+.tabs {
+    display: flex;
+    gap: 2px;
+    padding: 6px 12px;
+    background: #111;
+    border-bottom: 1px solid #333;
+}
+.tab {
+    padding: 4px 16px;
+    cursor: pointer;
+    border: 1px solid #444;
+    color: #888;
+    background: transparent;
+    font-family: monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    transition: all .15s;
+}
+.tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 
-// 1. Initial Setup: Load structure, but don't fetch all prices at once
-async function initialize() {
-    buildChrome();
-    await refreshStructure(); // Load CSVs and build the UI rows
-    startSequentialUpdate();  // Start the "one-by-one" loop
-    
-    // Refresh the CSV structure every 5 minutes (in case you change tickers in Sheets)
-    setInterval(refreshStructure, 300000); 
+.page { display: none; padding: 10px 12px; width: 100%; justify-content: space-between; }
+.page.active { display: flex; }
+
+.panel {
+    flex: 1;
+    min-width: 0;
+    padding: 0 10px;
+    border-right: 1px solid #222;
+}
+.panel:last-child { border-right: none; }
+
+.group {
+    color: orange;
+    margin-top: 16px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #222;
+    padding-bottom: 3px;
+    text-transform: uppercase;
 }
 
-// 2. Load CSVs and build the UI (Prices will be blank/0 initially)
-async function refreshStructure() {
-    setStatus("Syncing Sheets...");
-    const allTickersSet = new Set();
+.row {
+    display: grid;
+    /* Ticker | Name | Price | Chg | Pct */
+    grid-template-columns: 50px 110px 1fr 1fr 1fr; 
+    gap: 8px;
+    padding: 3px 0;
+    border-bottom: 1px solid #111;
+    align-items: center;
+}
+.row:hover { background: #141414; }
 
-    for (let i = 0; i < SHEETS.length; i++) {
-        const rows = await loadCSV(SHEETS[i].url);
-        const pageEl = document.getElementById(`page-${i}`);
-        
-        // Build the panels for this page
-        const frag = document.createDocumentFragment();
-        PANELS.forEach(p => {
-            // Modified buildPanelDOM to handle empty/initial state
-            const node = buildInitialPanelDOM(rows, p); 
-            if (node) frag.appendChild(node);
-        });
-        
-        pageEl.innerHTML = "";
-        pageEl.appendChild(frag);
+.cell-ticker { text-align: left; font-weight: bold; }
 
-        // Collect unique tickers for our global queue
-        rows.forEach(r => {
-            PANELS.forEach(p => {
-                const t = r[p.tickerCol];
-                if (t) allTickersSet.add(t);
-            });
-        });
-    }
-
-    globalTickerList = Array.from(allTickersSet);
-    initialized = true;
-    setStatus("Ready");
+.cell-name {
+    text-align: left;
+    font-size: 11px;
+    color: #00ffcc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.8; /* Slightly dimmer to make prices pop */
 }
 
-// 3. The "One-by-One" Loop
-async function startSequentialUpdate() {
-    if (isUpdating) return;
-    isUpdating = true;
+.cell-price { text-align: right; color: #fff; font-weight: bold; }
+.cell-chg   { text-align: right; }
+.cell-pct   { text-align: right; }
 
-    while (true) {
-        if (globalTickerList.length === 0) {
-            await sleep(2000);
-            continue;
-        }
+.green { color: #00e676; }
+.red   { color: #ff5252; }
 
-        const symbol = globalTickerList[tickerPointer];
-        const data = await getQuote(symbol);
-
-        if (data) {
-            updateUIDisplay(symbol, data);
-            document.getElementById("last-update").textContent = 
-                `Last: ${symbol} @ ${new Date().toLocaleTimeString("en-US", { hour12: false })}`;
-        }
-
-        // Move to next ticker or loop back to start
-        tickerPointer = (tickerPointer + 1) % globalTickerList.length;
-        
-        // Dynamic status
-        setStatus(`Queue: ${tickerPointer + 1}/${globalTickerList.length}`);
-
-        // WAIT before the next single call
-        await sleep(CALL_DELAY_MS);
-    }
+@keyframes blink-flash {
+    0%   { background: rgba(255,255,255,0.1); }
+    100% { background: transparent; }
 }
+.blink { animation: blink-flash .4s ease-out; }
 
-// 4. Update every instance of a ticker across all pages
-function updateUIDisplay(symbol, q) {
-    const up = q.d >= 0;
-    const colorClass = up ? "green" : "red";
-    const sign = up ? "+" : "";
-
-    // Find all rows across all pages that match this ticker
-    const rows = document.querySelectorAll(`.row-ticker-${symbol.replace(/[^a-z0-9]/gi, '_')}`);
-    
-    rows.forEach(row => {
-        row.className = `row ${colorClass} row-ticker-${symbol.replace(/[^a-z0-9]/gi, '_')} blink`;
-        row.querySelector('.cell-price').textContent = q.c.toFixed(2);
-        row.querySelector('.cell-chg').textContent = `${sign}${q.d.toFixed(2)}`;
-        row.querySelector('.cell-pct').textContent = `${sign}${q.dp.toFixed(2)}%`;
-        
-        // Remove blink after animation
-        setTimeout(() => row.classList.remove('blink'), 500);
-    });
+.statusbar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    padding: 3px 12px;
+    font-size: 11px;
+    color: #555;
+    display: flex;
+    justify-content: space-between;
 }
-
-// Helper to build the UI before prices arrive
-function buildInitialPanelDOM(rows, panel) {
-    const { groupCol, tickerCol, nameCol } = panel;
-    const items = rows
-        .map(r => ({
-            group:  r[groupCol]  || "",
-            ticker: r[tickerCol] || "",
-            name:   r[nameCol]   || ""
-        }))
-        .filter(r => r.group && r.ticker);
-
-    if (!items.length) return null;
-
-    const panelEl = document.createElement("div");
-    panelEl.className = "panel";
-    let lastGroup = null;
-
-    items.forEach(item => {
-        if (item.group !== lastGroup) {
-            lastGroup = item.group;
-            const g = document.createElement("div");
-            g.className = "group";
-            g.textContent = item.group;
-            panelEl.appendChild(g);
-        }
-
-        const row = document.createElement("div");
-        // Add a specific class so we can find this ticker later
-        const tickerClass = `row-ticker-${item.ticker.replace(/[^a-z0-9]/gi, '_')}`;
-        row.className = `row ${tickerClass}`;
-        row.innerHTML = `
-            <div class="cell-ticker">${item.ticker}</div>
-            <div class="cell-name" title="${item.name}">${item.name}</div>
-            <div class="cell-price">...</div>
-            <div class="cell-chg"></div>
-            <div class="cell-pct"></div>
-        `;
-        panelEl.appendChild(row);
-    });
-
-    return panelEl;
-}
-
-// Replace the end of your original script with:
-buildChrome();
-initialize();
