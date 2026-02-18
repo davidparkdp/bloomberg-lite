@@ -238,13 +238,13 @@ async function buildMasterList() {
                 }
             });
         });
-        const perCol = Math.ceil(pageItems.length / NUM_COLS);
+        const rowsPerCol = Math.floor((window.innerHeight - 80) / 19);
         pageItems.forEach((item, idx) => {
             if (tickerMeta[item.ticker]) return;
             tickerMeta[item.ticker] = {
                 group: item.group, name: item.name,
                 pageIdx: si,
-                colIdx: Math.min(Math.floor(idx / perCol), NUM_COLS - 1),
+                colIdx: Math.min(Math.floor(idx / rowsPerCol), NUM_COLS - 1),
                 order: idx
             };
             masterList.push(item.ticker);
