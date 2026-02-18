@@ -238,9 +238,10 @@ async function buildMasterList() {
                 }
             });
         });
-        // Temporarily use a generous estimate; will be corrected after first render
-        const colH = window.innerHeight - 80;
-        const rowsPerCol = Math.floor(colH / 22);
+        // col offsetHeight is ~769px, row is 20px, need buffer for group headers
+        // so use 24px effective height per item to account for group headers
+        const colH = window.innerHeight - 142; // 142 = actual header+tabs+status
+        const rowsPerCol = Math.floor(colH / 24);
         pageItems.forEach((item, idx) => {
             if (tickerMeta[item.ticker]) return;
             tickerMeta[item.ticker] = {
