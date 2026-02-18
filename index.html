@@ -55,53 +55,55 @@ body {
 
 #pages {
     flex: 1;
-    display: flex;
     min-height: 0;
     overflow: hidden;
 }
 .page {
     display: none;
-    flex: 1;
+    height: 100%;
     padding: 4px 6px;
-    overflow: hidden;
 }
 .page.active {
     display: flex;
-    flex-wrap: wrap;
-    align-items: stretch;          /* makes columns same height */
+    flex-direction: row;           /* columns side by side */
+    align-items: stretch;          /* make columns same height */
     gap: 6px;
 }
 
 .col {
-    flex: 1 1 240px;
-    min-width: 240px;
-    max-width: 340px;
-    display: flex;                  /* flex container */
-    flex-direction: column;         /* stack groups + rows vertically */
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
-    padding: 0 4px;
+    padding: 0 3px;
     border-right: 1px solid #1a1a1a;
 }
 .col:last-child { border-right: none; }
 
-/* This pushes content to top and fills remaining space at bottom */
+/* Fills remaining vertical space so bottoms align */
+.col > .content-wrapper {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
 .col::after {
     content: "";
-    flex-grow: 1;                   /* fills empty space → aligns bottoms */
+    flex: 1 1 auto;                /* pushes everything up, fills bottom */
     min-height: 0;
 }
 
 .group {
     color: orange;
     margin: 6px 0 2px 0;
-    font-size: 10px;
-    letter-spacing: 0.7px;
+    font-size: 10.5px;
+    letter-spacing: 0.8px;
     border-bottom: 1px solid #222;
     padding-bottom: 1px;
     text-transform: uppercase;
-    line-height: 1.1;
 }
-.group:first-of-type { margin-top: 3px; }
+.group:first-of-type { margin-top: 4px; }
 
 .row {
     display: grid;
@@ -145,19 +147,19 @@ body {
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 
-/* Tighter on smaller screens */
+/* Tighter layout on short windows */
 @media (max-height: 820px) {
     .row { font-size: 11.4px; min-height: 15px; }
     .cell-name { font-size: 10px; }
     .cell-age { font-size: 8.5px; }
-    .group { font-size: 9.5px; margin: 5px 0 1px; }
+    .group { font-size: 9.8px; margin: 5px 0 1px; }
 }
 
 @media (max-height: 680px) {
     .row { font-size: 10.8px; min-height: 14px; grid-template-columns: 42px 80px 58px 52px 50px 20px; }
     .cell-name { font-size: 9.5px; }
     .cell-age { font-size: 8px; }
-    .group { font-size: 9px; margin: 4px 0 0; }
+    .group { font-size: 9.2px; margin: 4px 0 0; }
 }
 </style>
 </head>
@@ -254,15 +256,23 @@ async function buildMasterList() {
         return true;
     });
 
+    // Vertical-first: fill column by column
+    const itemsPerCol = Math.ceil(unique.length / NUM_COLS);
     unique.forEach((item, idx) => {
-        const pageIdx = Math.floor(idx / (35 * NUM_COLS));
-        const pos = idx % (35 * NUM_COLS);
-        const colIdx = pos % NUM_COLS;
-        tickerMeta[item.ticker] = { group:item.group, name:item.name, pageIdx, colIdx, order:idx };
+        const colIdx  = idx % NUM_COLS;
+        const rowInCol = Math.floor(idx / NUM_COLS);
+        const pageIdx = Math.floor(rowInCol / itemsPerCol);
+        tickerMeta[item.ticker] = {
+            group: item.group,
+            name:  item.name,
+            pageIdx,
+            colIdx,
+            order: rowInCol                // order within the column
+        };
         masterList.push(item.ticker);
     });
 
-    numPages = Math.max(1, Math.ceil(unique.length / (35 * NUM_COLS)));
+    numPages = Math.max(1, Math.ceil(unique.length / (itemsPerCol * NUM_COLS)));
 }
 
 function buildChrome() {
@@ -293,8 +303,8 @@ function buildChrome() {
 }
 
 function switchPage(idx) {
-    document.querySelectorAll(".tab,.page").forEach((el,i) =>
-        el.classList.toggle("active", i % numPages === idx % numPages));
+    document.querySelectorAll(".tab,.page").forEach((el, i) =>
+        el.classList.toggle("active", i % numPages === idx));
 }
 
 document.addEventListener("keydown", e => {
@@ -313,7 +323,7 @@ document.addEventListener("dblclick", e => {
 function insertByOrder(container, el, order) {
     el.dataset.order = order;
     const kids = [...container.children];
-    const after = kids.find(c => (parseFloat(c.dataset.order) || 999) > order);
+    const after = kids.find(c => (parseFloat(c.dataset.order) || 9999) > order);
     if (after) container.insertBefore(el, after);
     else container.appendChild(el);
 }
