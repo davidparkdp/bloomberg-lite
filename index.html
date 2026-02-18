@@ -11,6 +11,7 @@ body {
     color: #00ffcc;
     font-family: monospace;
     font-size: 12px;
+    overflow-x: hidden;
 }
 .header {
     display: flex;
@@ -44,73 +45,84 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-.page { display: none; padding: 8px 10px; }
-.page.active { display: flex; align-items: flex-start; gap: 0; }
+/* Page is a fixed-height viewport that columns sit inside */
+.page {
+    display: none;
+    padding: 6px 8px;
+    gap: 0;
+    /* Let it fill the screen minus header/tabs/statusbar */
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+.page.active { display: flex; align-items: flex-start; }
 
-.panel {
+/* Each column is a fixed-height scrollable strip */
+.col {
     flex: 1;
     min-width: 0;
-    padding: 0 10px;
-    border-right: 1px solid #222;
+    height: 100%;
+    overflow-y: auto;
+    padding: 0 6px;
+    border-right: 1px solid #1e1e1e;
 }
-.panel:first-child { padding-left: 0; }
-.panel:last-child  { border-right: none; }
+.col:first-child { padding-left: 0; }
+.col:last-child  { border-right: none; padding-right: 0; }
+
+/* Hide scrollbar but keep scroll */
+.col::-webkit-scrollbar { width: 0; }
 
 .group {
     color: orange;
-    margin-top: 14px;
+    margin-top: 12px;
     margin-bottom: 1px;
     font-size: 10px;
     letter-spacing: 1px;
-    border-bottom: 1px solid #222;
+    border-bottom: 1px solid #1e1e1e;
     padding-bottom: 2px;
+    text-transform: uppercase;
 }
 .group:first-child { margin-top: 2px; }
 
-/* 
-  Columns: ticker | name | price | chg | pct | age
-  Kept tight — name is the flex column but capped small
-*/
+/* Row: ticker | name | price | chg | pct | age */
 .row {
     display: grid;
-    grid-template-columns: 52px 90px 68px 62px 60px 28px;
+    grid-template-columns: 46px 82px 62px 56px 54px 20px;
     padding: 2px 0;
     border-bottom: 1px solid #0f0f0f;
     align-items: center;
+    gap: 2px;
 }
 .row:hover { background: #141414; }
 
+/* Bloomberg amber for ticker + name */
 .cell-ticker {
     text-align: left;
     font-weight: bold;
-    font-size: 12px;
+    font-size: 11px;
+    color: #ffb300;
 }
 .cell-name {
     text-align: left;
     font-size: 10px;
-    padding-right: 4px;
+    color: #ffb300;
+    padding-right: 3px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     cursor: default;
     opacity: 0.85;
 }
-.cell-price { text-align: right; font-size: 12px; }
-.cell-chg   { text-align: right; font-size: 12px; }
-.cell-pct   { text-align: right; font-size: 12px; }
 
-/* Age indicator — small dot that fades from bright to dim as data gets stale */
-.cell-age {
-    text-align: right;
-    font-size: 9px;
-    opacity: 0.4;
-    padding-left: 2px;
-}
+/* Price/chg/pct inherit green/red from row */
+.cell-price { text-align: right; font-size: 11px; }
+.cell-chg   { text-align: right; font-size: 11px; }
+.cell-pct   { text-align: right; font-size: 11px; }
+.cell-age   { text-align: right; font-size: 9px; opacity: 0.35; }
 
 .green { color: #00e676; }
 .red   { color: #ff5252; }
 
-.spinner { color: #444; padding: 40px 20px; letter-spacing: 2px; font-size: 11px; }
+.spinner { color: #333; padding: 30px 10px; letter-spacing: 2px; font-size: 11px; }
 
 .statusbar {
     position: fixed;
@@ -121,9 +133,10 @@ body {
     font-size: 10px;
     color: #555;
     display: flex;
-    gap: 20px;
+    gap: 16px;
+    height: 20px;
 }
-.statusbar span { color: #666; }
+.statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 </style>
 </head>
@@ -145,8 +158,9 @@ body {
 // CONFIG
 // ─────────────────────────────────────────────────────────
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
-const CALL_DELAY_MS = 1200;   // 1.2s per call = 50/min, under the 60/min limit
-const PAUSE_ON_429  = 65000;  // pause 65s on rate limit then retry
+const CALL_DELAY_MS = 1200;
+const PAUSE_ON_429  = 65000;
+const NUM_COLS      = 4;   // number of display columns per page — change to 5 if needed
 
 const SHEETS = [
     { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
@@ -154,7 +168,10 @@ const SHEETS = [
     { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
 ];
 
-// Col layout per panel:  group | ticker | name
+// Sheet columns (0-indexed after proper CSV parse):
+// Panel 1: A(0)=group  B(1)=ticker  C(2)=name
+// Panel 2: D(3)=group  E(4)=ticker  F(5)=name
+// Panel 3: G(6)=group  H(7)=ticker  I(8)=name
 const PANELS = [
     { groupCol: 0, tickerCol: 1, nameCol: 2 },
     { groupCol: 3, tickerCol: 4, nameCol: 5 },
@@ -162,13 +179,40 @@ const PANELS = [
 ];
 
 // ─────────────────────────────────────────────────────────
-// STATE
-// quoteStore[ticker] = { c, d, dp, updatedAt }
-// tickerMeta[ticker] = { group, name, pageIdx, panelIdx }
+// CSV PARSER — properly handles quoted fields with commas
 // ─────────────────────────────────────────────────────────
-const quoteStore = {};  // live price data keyed by ticker
-const tickerMeta = {};  // static info keyed by ticker
-let   masterList = [];  // ordered list of all tickers across all pages/panels
+function parseCSV(text) {
+    return text.trim().split("\n").map(line => {
+        const fields = [];
+        let cur = "", inQuote = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') {
+                inQuote = !inQuote;
+            } else if (ch === ',' && !inQuote) {
+                fields.push(cur.trim());
+                cur = "";
+            } else {
+                cur += ch;
+            }
+        }
+        fields.push(cur.trim());
+        return fields;
+    });
+}
+
+async function loadCSV(url) {
+    const res  = await fetch(url);
+    const text = await res.text();
+    return parseCSV(text);
+}
+
+// ─────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────
+const quoteStore = {};  // ticker → { c, d, dp, updatedAt }
+const tickerMeta = {};  // ticker → { group, name, pageIdx, colIdx, order }
+let   masterList = [];  // ordered ticker list for rolling fetch
 
 // ─────────────────────────────────────────────────────────
 // UTILITIES
@@ -180,9 +224,8 @@ function setStatus(msg, warn = false) {
     el.textContent = msg;
     el.className = warn ? "status-warn" : "";
 }
-
-function setCounter(current, total) {
-    document.getElementById("counter").textContent = `${current} / ${total}`;
+function setCounter(i, n) {
+    document.getElementById("counter").textContent = `${i} / ${n}`;
 }
 
 function updateClock() {
@@ -194,52 +237,68 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// Format age as e.g. "2m" or "45s"
-function ageLabel(updatedAt) {
-    if (!updatedAt) return "";
-    const s = Math.floor((Date.now() - updatedAt) / 1000);
-    if (s < 60)  return `${s}s`;
+function ageLabel(ts) {
+    if (!ts) return "";
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60)   return `${s}s`;
     if (s < 3600) return `${Math.floor(s/60)}m`;
     return `${Math.floor(s/3600)}h`;
 }
 
 // ─────────────────────────────────────────────────────────
-// CSV LOADER
-// ─────────────────────────────────────────────────────────
-async function loadCSV(url) {
-    const res  = await fetch(url);
-    const text = await res.text();
-    return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
-}
-
-// ─────────────────────────────────────────────────────────
-// BUILD MASTER LIST from all sheets
-// Called once at startup. Populates tickerMeta and masterList.
+// BUILD MASTER LIST
+// Reads all sheets, collects every ticker in order,
+// assigns each to a display column by distributing evenly.
 // ─────────────────────────────────────────────────────────
 async function buildMasterList() {
     masterList = [];
+
     for (let si = 0; si < SHEETS.length; si++) {
         const rows = await loadCSV(SHEETS[si].url);
-        PANELS.forEach((p, pi) => {
+
+        // Gather all items for this page in order: panel1 items, then panel2, then panel3
+        const pageItems = []; // { group, ticker, name }
+        PANELS.forEach(p => {
             rows.forEach(row => {
                 const group  = row[p.groupCol]  || "";
                 const ticker = row[p.tickerCol] || "";
                 const name   = row[p.nameCol]   || "";
-                if (!group || !ticker) return;
-                if (tickerMeta[ticker]) return; // already seen (dedup)
-                tickerMeta[ticker] = { group, name, pageIdx: si, panelIdx: pi };
-                masterList.push(ticker);
+                if (group && ticker) pageItems.push({ group, ticker, name });
             });
+        });
+
+        // Deduplicate within page
+        const seen = new Set();
+        const unique = pageItems.filter(item => {
+            if (seen.has(item.ticker)) return false;
+            seen.add(item.ticker);
+            return true;
+        });
+
+        // Distribute items across NUM_COLS columns as evenly as possible
+        const perCol = Math.ceil(unique.length / NUM_COLS);
+        unique.forEach((item, idx) => {
+            const colIdx = Math.floor(idx / perCol);
+            if (tickerMeta[item.ticker]) return; // global dedup
+            tickerMeta[item.ticker] = {
+                group:   item.group,
+                name:    item.name,
+                pageIdx: si,
+                colIdx:  Math.min(colIdx, NUM_COLS - 1),
+                order:   idx
+            };
+            masterList.push(item.ticker);
         });
     }
 }
 
 // ─────────────────────────────────────────────────────────
-// UI CHROME
+// UI CHROME — build tabs and column containers
 // ─────────────────────────────────────────────────────────
 function buildChrome() {
     const tabsEl  = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
+
     SHEETS.forEach((sheet, i) => {
         const tab = document.createElement("button");
         tab.className = "tab" + (i === 0 ? " active" : "");
@@ -250,67 +309,72 @@ function buildChrome() {
         const page = document.createElement("div");
         page.className = "page" + (i === 0 ? " active" : "");
         page.id = `page-${i}`;
-        // Pre-build panel skeletons — rows will be added as data arrives
-        let html = "";
-        PANELS.forEach((_, pi) => {
-            html += `<div class="panel" id="panel-${i}-${pi}"></div>`;
-        });
-        page.innerHTML = html;
+
+        // Create NUM_COLS column divs
+        for (let c = 0; c < NUM_COLS; c++) {
+            const col = document.createElement("div");
+            col.className = "col";
+            col.id = `col-${i}-${c}`;
+            col.innerHTML = `<div class="spinner">…</div>`;
+            page.appendChild(col);
+        }
         pagesEl.appendChild(page);
     });
 }
 
 function switchPage(idx) {
-    document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
+    document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
-// Keyboard navigation
 document.addEventListener("keydown", e => {
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const tabs = document.querySelectorAll(".tab");
         let cur = [...tabs].findIndex(t => t.classList.contains("active"));
-        if (e.key === "ArrowRight") cur = (cur + 1) % SHEETS.length;
-        if (e.key === "ArrowLeft")  cur = (cur - 1 + SHEETS.length) % SHEETS.length;
+        cur = e.key === "ArrowRight"
+            ? (cur + 1) % SHEETS.length
+            : (cur - 1 + SHEETS.length) % SHEETS.length;
         switchPage(cur);
     }
 });
 
 // ─────────────────────────────────────────────────────────
-// RENDER — update a single ticker's row in the DOM
-// Creates the row if it doesn't exist yet.
+// RENDER — update or create a single ticker's row
 // ─────────────────────────────────────────────────────────
 function renderTicker(ticker) {
     const q    = quoteStore[ticker];
     const meta = tickerMeta[ticker];
     if (!q || !meta) return;
 
-    const panelEl = document.getElementById(`panel-${meta.pageIdx}-${meta.panelIdx}`);
-    if (!panelEl) return;
+    const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
+    if (!colEl) return;
 
-    // Ensure group header exists
-    let groupEl = panelEl.querySelector(`[data-group="${meta.group}"]`);
+    // Remove spinner if present
+    const spinner = colEl.querySelector(".spinner");
+    if (spinner) spinner.remove();
+
+    // Ensure group header exists in this column
+    const groupId = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\s+/g,"-")}`;
+    let groupEl = document.getElementById(groupId);
     if (!groupEl) {
         groupEl = document.createElement("div");
         groupEl.className = "group";
-        groupEl.dataset.group = meta.group;
+        groupEl.id = groupId;
         groupEl.textContent = meta.group;
-        panelEl.appendChild(groupEl);
+        // Insert group in correct position by order
+        insertByOrder(colEl, groupEl, meta.order - 0.5);
     }
 
     const up    = q.d >= 0;
     const color = up ? "green" : "red";
     const sign  = up ? "+" : "";
-    const age   = ageLabel(q.updatedAt);
 
-    let rowEl = panelEl.querySelector(`[data-ticker="${ticker}"]`);
+    let rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
     if (!rowEl) {
         rowEl = document.createElement("div");
         rowEl.dataset.ticker = ticker;
-        // Insert after the group header and any existing rows for this group
-        groupEl.insertAdjacentElement("afterend", rowEl);
-        // Re-sort: move this row after the last sibling with same group
-        // (simple approach: just append after groupEl if row is new)
+        rowEl.dataset.order  = meta.order;
+        insertByOrder(colEl, rowEl, meta.order);
     }
 
     rowEl.className = `row ${color}`;
@@ -320,19 +384,28 @@ function renderTicker(ticker) {
         <div class="cell-price">${q.c.toFixed(2)}</div>
         <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
         <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
-        <div class="cell-age">${age}</div>
+        <div class="cell-age">${ageLabel(q.updatedAt)}</div>
     `;
 }
 
-// Update just the age labels every 30s without re-fetching
+// Insert element into container maintaining sort order by data-order attribute
+function insertByOrder(container, el, order) {
+    el.dataset.order = order;
+    const children = [...container.children];
+    const after = children.find(c => parseFloat(c.dataset.order || 0) > order);
+    if (after) container.insertBefore(el, after);
+    else container.appendChild(el);
+}
+
+// Refresh age labels every 30s
 setInterval(() => {
     masterList.forEach(ticker => {
         const q    = quoteStore[ticker];
         const meta = tickerMeta[ticker];
         if (!q || !meta) return;
-        const panelEl = document.getElementById(`panel-${meta.pageIdx}-${meta.panelIdx}`);
-        if (!panelEl) return;
-        const rowEl = panelEl.querySelector(`[data-ticker="${ticker}"]`);
+        const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
+        if (!colEl) return;
+        const rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
         if (!rowEl) return;
         const ageEl = rowEl.querySelector(".cell-age");
         if (ageEl) ageEl.textContent = ageLabel(q.updatedAt);
@@ -340,9 +413,7 @@ setInterval(() => {
 }, 30000);
 
 // ─────────────────────────────────────────────────────────
-// CONTINUOUS ROLLING FETCH LOOP
-// Goes through masterList one ticker at a time, forever.
-// Never re-fetches a ticker until all others have been done.
+// FETCH QUOTE
 // ─────────────────────────────────────────────────────────
 async function fetchQuote(ticker) {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
@@ -360,13 +431,16 @@ async function fetchQuote(ticker) {
                 quoteStore[ticker] = { c: data.c, d: data.d, dp: data.dp, updatedAt: Date.now() };
                 renderTicker(ticker);
             }
-            return; // success
+            return;
         } catch {
             await sleep(2000);
         }
     }
 }
 
+// ─────────────────────────────────────────────────────────
+// ROLLING LOOP — one ticker at a time, forever
+// ─────────────────────────────────────────────────────────
 async function rollingLoop() {
     let idx = 0;
     while (true) {
@@ -386,8 +460,7 @@ async function init() {
     buildChrome();
     setStatus("Reading sheets…");
     await buildMasterList();
-    setStatus("Starting…");
-    rollingLoop(); // fire and forget — runs forever
+    rollingLoop();
 }
 
 init();
