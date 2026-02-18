@@ -48,7 +48,6 @@ body {
 .page {
     display: none;
     padding: 10px 12px;
-    gap: 0;
 }
 .page.active { display: flex; align-items: flex-start; }
 
@@ -128,16 +127,17 @@ body {
 const API_KEY    = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const REFRESH_MS = 30000;
 
+// Delay between each individual API call in milliseconds.
+// 1100ms = ~54 calls/min, safely under Finnhub's 60/min free limit.
+const CALL_DELAY_MS = 1100;
+
 const SHEETS = [
     { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
     { label: "PAGE 2", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=1898380729&single=true&output=csv" },
     { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
 ];
 
-// Your sheet layout per row:
-//   Col A (0) = group,  Col B (1) = ticker  → left panel
-//   Col C (2) = group,  Col D (3) = ticker  → middle panel
-//   Col E (4) = group,  Col F (5) = ticker  → right panel
+// Col A(0)+B(1) = left panel, Col C(2)+D(3) = middle, Col E(4)+F(5) = right
 const PANELS = [
     { groupCol: 0, tickerCol: 1 },
     { groupCol: 2, tickerCol: 3 },
@@ -184,7 +184,7 @@ function switchPage(idx) {
 }
 
 // ─────────────────────────────────────────────────────────
-// FETCH HELPERS
+// CSV + QUOTE HELPERS
 // ─────────────────────────────────────────────────────────
 async function loadCSV(url) {
     const res  = await fetch(url);
@@ -192,38 +192,65 @@ async function loadCSV(url) {
     return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
 }
 
-async function fetchQuote(symbol) {
-    try {
-        const res  = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`);
-        if (!res.ok) return null;
-        const data = await res.json();
-        return (data && data.c != null && data.c !== 0) ? data : null;
-    } catch { return null; }
+// Global queue — all API calls go through here one at a time
+let apiQueue = Promise.resolve();
+
+function queuedFetch(symbol) {
+    // Chain onto the global queue so calls are strictly one-at-a-time
+    apiQueue = apiQueue.then(async () => {
+        await new Promise(r => setTimeout(r, CALL_DELAY_MS));
+        try {
+            const res  = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`);
+            if (!res.ok) return null;
+            const data = await res.json();
+            return (data && data.c != null && data.c !== 0) ? data : null;
+        } catch { return null; }
+    });
+    return apiQueue;
 }
 
 // ─────────────────────────────────────────────────────────
-// BUILD ONE PANEL
+// FETCH ALL QUOTES FOR A PAGE (strictly sequential)
 // ─────────────────────────────────────────────────────────
-async function buildPanel(rows, groupCol, tickerCol, delayOffset) {
+async function fetchAllQuotes(rows) {
+    // Gather every ticker across all panels (deduplicated)
+    const allItems = []; // { panelIdx, rowIdx, group, ticker }
+    PANELS.forEach((p, pi) => {
+        rows.forEach((row, ri) => {
+            const group  = row[p.groupCol] || "";
+            const ticker = row[p.tickerCol] || "";
+            if (group && ticker) allItems.push({ pi, ri, group, ticker });
+        });
+    });
+
+    // Fetch one by one using the queue
+    const quoteMap = {}; // ticker → quote data
+    const seen = new Set();
+    for (const item of allItems) {
+        if (seen.has(item.ticker)) continue; // skip duplicates
+        seen.add(item.ticker);
+        setStatus(`Fetching ${item.ticker}…`);
+        quoteMap[item.ticker] = await queuedFetch(item.ticker);
+    }
+    return { allItems, quoteMap };
+}
+
+// ─────────────────────────────────────────────────────────
+// BUILD DOM FOR ONE PANEL from pre-fetched quote map
+// ─────────────────────────────────────────────────────────
+function buildPanelDOM(rows, groupCol, tickerCol, quoteMap) {
     const items = rows
         .map(r => ({ group: r[groupCol] || "", ticker: r[tickerCol] || "" }))
-        .filter(r => r.ticker && r.group);
+        .filter(r => r.group && r.ticker);
 
     if (!items.length) return null;
-
-    // Fetch all quotes first, then render — no trickle-in effect
-    const quotes = [];
-    for (let i = 0; i < items.length; i++) {
-        await new Promise(r => setTimeout(r, delayOffset + i * 350));
-        quotes.push(await fetchQuote(items[i].ticker));
-    }
 
     const panel = document.createElement("div");
     panel.className = "panel";
 
     let lastGroup = null;
-    items.forEach((item, i) => {
-        const q = quotes[i];
+    items.forEach(item => {
+        const q = quoteMap[item.ticker];
         if (!q) return;
 
         if (item.group !== lastGroup) {
@@ -252,25 +279,22 @@ async function buildPanel(rows, groupCol, tickerCol, delayOffset) {
 }
 
 // ─────────────────────────────────────────────────────────
-// REFRESH ONE PAGE — fetch everything, then swap all at once
+// REFRESH ONE PAGE
 // ─────────────────────────────────────────────────────────
 let initialized = false;
 
 async function refreshPage(idx) {
-    setStatus(`Fetching page ${idx + 1}…`);
     const rows = await loadCSV(SHEETS[idx].url);
+    const { quoteMap } = await fetchAllQuotes(rows);
 
-    // Stagger each panel's API calls so they don't all fire at once
-    const avgRows    = Math.ceil(rows.length / PANELS.length);
-    const panelNodes = await Promise.all(
-        PANELS.map((p, pi) =>
-            buildPanel(rows, p.groupCol, p.tickerCol, pi * avgRows * 350)
-        )
-    );
-
+    // Build all panel DOMs from the now-complete quote map
     const frag = document.createDocumentFragment();
-    panelNodes.forEach(node => { if (node) frag.appendChild(node); });
+    PANELS.forEach(p => {
+        const node = buildPanelDOM(rows, p.groupCol, p.tickerCol, quoteMap);
+        if (node) frag.appendChild(node);
+    });
 
+    // Atomic swap
     const pageEl = document.getElementById(`page-${idx}`);
     if (initialized) {
         pageEl.classList.add("blink");
@@ -284,9 +308,14 @@ async function refreshPage(idx) {
 // REFRESH ALL PAGES
 // ─────────────────────────────────────────────────────────
 async function refreshAll() {
+    // Reset the queue at the start of each full refresh cycle
+    apiQueue = Promise.resolve();
+
     for (let i = 0; i < SHEETS.length; i++) {
+        setStatus(`Loading page ${i + 1}…`);
         await refreshPage(i);
     }
+
     initialized = true;
     setStatus("OK");
     document.getElementById("last-update").textContent =
