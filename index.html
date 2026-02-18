@@ -101,7 +101,7 @@ body {
     color: orange;
     margin-top: 12px;
     margin-bottom: 1px;
-    font-size: 10px;
+    font-size: 11px;
     letter-spacing: 1px;
     border-bottom: 1px solid #1e1e1e;
     padding-bottom: 2px;
@@ -111,7 +111,7 @@ body {
 
 .row {
     display: grid;
-    grid-template-columns: 46px 80px 64px 56px 54px 20px;
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
     padding: 2px 0;
     border-bottom: 1px solid #0f0f0f;
     align-items: center;
@@ -119,16 +119,16 @@ body {
 }
 .row:hover { background: #141414; }
 
-.cell-ticker { text-align: left; font-weight: bold; font-size: 12px; color: #ffb300; cursor: pointer; }
+.cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
 .cell-name   {
-    text-align: left; font-size: 11px; color: #ffb300;
+    text-align: left; color: #ffb300;
     padding-right: 3px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
-    cursor: default; opacity: 0.85;
+    cursor: default; opacity: 0.85; font-size: 11px;
 }
-.cell-price { text-align: right; font-size: 12px; }
-.cell-chg   { text-align: right; font-size: 12px; }
-.cell-pct   { text-align: right; font-size: 12px; }
+.cell-price { text-align: right; }
+.cell-chg   { text-align: right; }
+.cell-pct   { text-align: right; }
 .cell-age   { text-align: right; font-size: 9px; opacity: 0.35; }
 
 .green { color: #00e676; }
@@ -238,10 +238,9 @@ async function buildMasterList() {
                 }
             });
         });
-        // Each row is ~15px tall (measured from actual render)
-        // Group headers add ~14px each — approximate 1 per 8 tickers
+        // At 13px font, each row is ~18px, group headers ~16px (1 per ~8 rows)
         const colH = window.innerHeight - 80;
-        const rowsPerCol = Math.floor(colH / 15);
+        const rowsPerCol = Math.floor(colH / 18);
         pageItems.forEach((item, idx) => {
             if (tickerMeta[item.ticker]) return;
             tickerMeta[item.ticker] = {
@@ -294,6 +293,15 @@ document.addEventListener("keydown", e => {
     }
 });
 
+// Double-click any ticker cell to open Yahoo Finance — uses delegation so it
+// survives innerHTML refreshes
+document.addEventListener("dblclick", e => {
+    const tickerCell = e.target.closest(".cell-ticker");
+    if (!tickerCell) return;
+    const ticker = tickerCell.textContent.trim();
+    window.open(`https://finance.yahoo.com/quote/${ticker}/`, "_blank");
+});
+
 // ── Render one ticker ──
 function insertByOrder(container, el, order) {
     el.dataset.order = order;
@@ -336,10 +344,6 @@ function renderTicker(ticker) {
         <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
         <div class="cell-age">${ageLabel(q.updatedAt)}</div>
     `;
-    // Double-click ticker to open Yahoo Finance
-    rowEl.querySelector(".cell-ticker").addEventListener("dblclick", () => {
-        window.open(`https://finance.yahoo.com/quote/${ticker}/`, "_blank");
-    });
 }
 
 setInterval(() => {
