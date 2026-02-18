@@ -54,7 +54,6 @@
         .col { flex: 1; border-right: 1px solid #1a1a1a; height: 100%; }
         .col:last-child { border-right: none; }
 
-        /* Every 'Slot' is 21px. Group = 2 slots (42px). Ticker = 1 slot (21px) */
         .group {
             color: orange;
             height: 42px; 
@@ -117,6 +116,17 @@ let numPages = 0;
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
+    
+    // Periodically update the "Age" labels for all fetched tickers
+    masterList.forEach(t => {
+        if (quoteStore[t]) {
+            const ageEl = document.querySelector(`#row-${t} .cell-age`);
+            if (ageEl) {
+                const s = Math.floor((Date.now() - quoteStore[t].ts) / 1000);
+                ageEl.textContent = s < 60 ? s + "s" : Math.floor(s / 60) + "m";
+            }
+        }
+    });
 }
 setInterval(updateClock, 1000);
 
@@ -134,18 +144,19 @@ async function buildMasterList() {
     }
 
     const colH = document.getElementById("pages").offsetHeight || 600;
-    const slotsPerCol = Math.floor(colH / 21);
+    // MODIFIED: Subtract 1 row (21px) from available slots
+    const slotsPerCol = Math.floor((colH - 21) / 21);
 
     let curP = 0, curC = 0, curSlots = 0, lastG = "";
 
     allItems.forEach(item => {
         const isNewG = item.group !== lastG;
-        const cost = isNewG ? 3 : 1; // 3 slots for Header + Ticker, 1 for just Ticker
+        const cost = isNewG ? 3 : 1; 
 
         if (curSlots + cost > slotsPerCol) {
             curC++;
             if (curC >= NUM_COLS) { curP++; curC = 0; }
-            curSlots = 3; // New col always needs a header (2) + row (1)
+            curSlots = 3; 
             tickerMeta[item.ticker] = { ...item, pageIdx: curP, colIdx: curC, showHeader: true };
         } else {
             tickerMeta[item.ticker] = { ...item, pageIdx: curP, colIdx: curC, showHeader: isNewG };
@@ -157,17 +168,22 @@ async function buildMasterList() {
     numPages = curP + 1;
 }
 
+function switchPage(idx) {
+    document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
+    const targetTab = document.querySelectorAll(".tab")[idx];
+    const targetPage = document.getElementById(`page-${idx}`);
+    if (targetTab) targetTab.classList.add("active");
+    if (targetPage) targetPage.classList.add("active");
+}
+
 function buildChrome() {
     const tEl = document.getElementById("tabs"), pEl = document.getElementById("pages");
+    tEl.innerHTML = ""; pEl.innerHTML = "";
     for (let i = 0; i < numPages; i++) {
         const btn = document.createElement("button");
         btn.className = "tab" + (i===0?" active":"");
         btn.textContent = `PAGE ${i+1}`;
-        btn.onclick = () => {
-            document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
-            btn.classList.add("active");
-            document.getElementById(`page-${i}`).classList.add("active");
-        };
+        btn.onclick = () => switchPage(i);
         tEl.appendChild(btn);
 
         const pg = document.createElement("div");
@@ -204,6 +220,7 @@ async function rollingLoop() {
     while(true) {
         const t = masterList[i];
         document.getElementById("status").textContent = `Fetching ${t}...`;
+        document.getElementById("counter").textContent = `${i+1}/${masterList.length}`;
         try {
             const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${t}&token=${API_KEY}`);
             if (r.status === 429) { await new Promise(ok => setTimeout(ok, PAUSE_ON_429)); continue; }
@@ -211,6 +228,7 @@ async function rollingLoop() {
             const row = document.getElementById(`row-${t}`);
             if (d.c && row) {
                 const up = d.d >= 0;
+                quoteStore[t] = { c: d.c, d: d.d, dp: d.dp, ts: Date.now() };
                 row.className = `row ${up?'green':'red'}`;
                 row.innerHTML = `<div class="cell-ticker">${t}</div><div class="cell-name">${tickerMeta[t].name}</div><div class="cell-price">${d.c.toFixed(2)}</div><div class="cell-chg">${up?'+':''}${d.d.toFixed(2)}</div><div class="cell-pct">${up?'+':''}${d.dp.toFixed(2)}%</div><div class="cell-age">0s</div>`;
             }
@@ -219,6 +237,16 @@ async function rollingLoop() {
         i = (i + 1) % masterList.length;
     }
 }
+
+document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const tabs = document.querySelectorAll(".tab");
+        let cur = [...tabs].findIndex(t => t.classList.contains("active"));
+        if (e.key === "ArrowRight") cur = (cur + 1) % numPages;
+        else cur = (cur - 1 + numPages) % numPages;
+        switchPage(cur);
+    }
+});
 
 async function init() {
     updateClock();
