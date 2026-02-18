@@ -71,13 +71,24 @@ body {
 }
 .group:first-child { margin-top: 4px; }
 
+/* Row: ticker+name left, price+chg+pct right-aligned */
 .row {
     display: grid;
-    grid-template-columns: 90px 80px 70px 70px;
+    grid-template-columns: 55px 1fr 75px 68px 68px;
     padding: 3px 0;
     border-bottom: 1px solid #111;
+    align-items: center;
 }
 .row:hover { background: #141414; }
+
+/* Left-aligned cells */
+.cell-ticker { text-align: left; font-weight: bold; }
+.cell-name   { text-align: left; color: inherit; font-size: 11px; padding-right: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Right-aligned numeric cells */
+.cell-price  { text-align: right; }
+.cell-chg    { text-align: right; }
+.cell-pct    { text-align: right; }
 
 .green { color: #00e676; }
 .red   { color: #ff5252; }
@@ -124,11 +135,8 @@ body {
 // ─────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────
-const API_KEY    = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
-const REFRESH_MS = 30000;
-
-// Delay between each individual API call in milliseconds.
-// 1100ms = ~54 calls/min, safely under Finnhub's 60/min free limit.
+const API_KEY     = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+const REFRESH_MS  = 30000;
 const CALL_DELAY_MS = 1100;
 
 const SHEETS = [
@@ -137,7 +145,9 @@ const SHEETS = [
     { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
 ];
 
-// Col A(0)+B(1) = left panel, Col C(2)+D(3) = middle, Col E(4)+F(5) = right
+// Col A(0)=group, B(1)=ticker → left panel
+// Col C(2)=group, D(3)=ticker → middle panel
+// Col E(4)=group, F(5)=ticker → right panel
 const PANELS = [
     { groupCol: 0, tickerCol: 1 },
     { groupCol: 2, tickerCol: 3 },
@@ -184,7 +194,7 @@ function switchPage(idx) {
 }
 
 // ─────────────────────────────────────────────────────────
-// CSV + QUOTE HELPERS
+// CSV LOADER
 // ─────────────────────────────────────────────────────────
 async function loadCSV(url) {
     const res  = await fetch(url);
@@ -192,12 +202,13 @@ async function loadCSV(url) {
     return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
 }
 
-// Global queue — all API calls go through here one at a time
+// ─────────────────────────────────────────────────────────
+// GLOBAL SERIAL API QUEUE
+// ─────────────────────────────────────────────────────────
 let apiQueue = Promise.resolve();
 
 function queuedFetch(symbol) {
-    // Chain onto the global queue so calls are strictly one-at-a-time
-    apiQueue = apiQueue.then(async () => {
+    const result = apiQueue.then(async () => {
         await new Promise(r => setTimeout(r, CALL_DELAY_MS));
         try {
             const res  = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`);
@@ -206,39 +217,81 @@ function queuedFetch(symbol) {
             return (data && data.c != null && data.c !== 0) ? data : null;
         } catch { return null; }
     });
-    return apiQueue;
+    apiQueue = result.then(() => {}, () => {});
+    return result;
 }
 
 // ─────────────────────────────────────────────────────────
-// FETCH ALL QUOTES FOR A PAGE (strictly sequential)
+// FETCH COMPANY NAME FROM FINNHUB PROFILE
 // ─────────────────────────────────────────────────────────
-async function fetchAllQuotes(rows) {
-    // Gather every ticker across all panels (deduplicated)
-    const allItems = []; // { panelIdx, rowIdx, group, ticker }
-    PANELS.forEach((p, pi) => {
-        rows.forEach((row, ri) => {
-            const group  = row[p.groupCol] || "";
+const nameCache = {};
+
+function queuedName(symbol) {
+    if (nameCache[symbol] !== undefined) return Promise.resolve(nameCache[symbol]);
+    const result = apiQueue.then(async () => {
+        await new Promise(r => setTimeout(r, CALL_DELAY_MS));
+        try {
+            const res  = await fetch(`https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`);
+            if (!res.ok) { nameCache[symbol] = ""; return ""; }
+            const data = await res.json();
+            // Shorten common suffixes to keep names compact
+            let name = data.name || "";
+            name = name
+                .replace(/ Inc\.?$/i, "")
+                .replace(/ Corp\.?$/i, "")
+                .replace(/ Corporation$/i, "")
+                .replace(/ Ltd\.?$/i, "")
+                .replace(/ Limited$/i, "")
+                .replace(/ Co\.?$/i, "")
+                .replace(/ Holdings?$/i, "")
+                .replace(/ Technologies?$/i, " Tech")
+                .replace(/ Pharmaceuticals?$/i, " Pharma")
+                .replace(/ Therapeutics?$/i, " Tx");
+            // Truncate if still long
+            if (name.length > 18) name = name.slice(0, 17) + "…";
+            nameCache[symbol] = name;
+            return name;
+        } catch { nameCache[symbol] = ""; return ""; }
+    });
+    apiQueue = result.then(() => {}, () => {});
+    return result;
+}
+
+// ─────────────────────────────────────────────────────────
+// FETCH ALL DATA FOR A PAGE (quotes + names, strictly serial)
+// ─────────────────────────────────────────────────────────
+async function fetchAllData(rows) {
+    // Collect unique tickers across all panels
+    const tickers = [];
+    const seen = new Set();
+    PANELS.forEach(p => {
+        rows.forEach(row => {
             const ticker = row[p.tickerCol] || "";
-            if (group && ticker) allItems.push({ pi, ri, group, ticker });
+            const group  = row[p.groupCol]  || "";
+            if (ticker && group && !seen.has(ticker)) {
+                seen.add(ticker);
+                tickers.push(ticker);
+            }
         });
     });
 
-    // Fetch one by one using the queue
-    const quoteMap = {}; // ticker → quote data
-    const seen = new Set();
-    for (const item of allItems) {
-        if (seen.has(item.ticker)) continue; // skip duplicates
-        seen.add(item.ticker);
-        setStatus(`Fetching ${item.ticker}…`);
-        quoteMap[item.ticker] = await queuedFetch(item.ticker);
+    const quoteMap = {};
+    const nameMap  = {};
+
+    for (const ticker of tickers) {
+        setStatus(`Fetching ${ticker}…`);
+        // Queue quote then name back-to-back
+        quoteMap[ticker] = await queuedFetch(ticker);
+        nameMap[ticker]  = await queuedName(ticker);
     }
-    return { allItems, quoteMap };
+
+    return { quoteMap, nameMap };
 }
 
 // ─────────────────────────────────────────────────────────
-// BUILD DOM FOR ONE PANEL from pre-fetched quote map
+// BUILD PANEL DOM
 // ─────────────────────────────────────────────────────────
-function buildPanelDOM(rows, groupCol, tickerCol, quoteMap) {
+function buildPanelDOM(rows, groupCol, tickerCol, quoteMap, nameMap) {
     const items = rows
         .map(r => ({ group: r[groupCol] || "", ticker: r[tickerCol] || "" }))
         .filter(r => r.group && r.ticker);
@@ -264,13 +317,21 @@ function buildPanelDOM(rows, groupCol, tickerCol, quoteMap) {
         const up    = q.d >= 0;
         const color = up ? "green" : "red";
         const sign  = up ? "+" : "";
-        const row   = document.createElement("div");
-        row.className = "row";
+        const name  = nameMap[item.ticker] || "";
+
+        // Format numbers — consistent decimal places so dots line up
+        const price = q.c.toFixed(2);
+        const chg   = (up ? "+" : "") + q.d.toFixed(2);
+        const pct   = (up ? "+" : "") + q.dp.toFixed(2) + "%";
+
+        const row = document.createElement("div");
+        row.className = `row ${color}`;
         row.innerHTML = `
-            <div>${item.ticker}</div>
-            <div>$${q.c.toFixed(2)}</div>
-            <div class="${color}">${sign}${q.d.toFixed(2)}</div>
-            <div class="${color}">${sign}${q.dp.toFixed(2)}%</div>
+            <div class="cell-ticker">${item.ticker}</div>
+            <div class="cell-name">${name}</div>
+            <div class="cell-price">${price}</div>
+            <div class="cell-chg">${chg}</div>
+            <div class="cell-pct">${pct}</div>
         `;
         panel.appendChild(row);
     });
@@ -285,16 +346,14 @@ let initialized = false;
 
 async function refreshPage(idx) {
     const rows = await loadCSV(SHEETS[idx].url);
-    const { quoteMap } = await fetchAllQuotes(rows);
+    const { quoteMap, nameMap } = await fetchAllData(rows);
 
-    // Build all panel DOMs from the now-complete quote map
     const frag = document.createDocumentFragment();
     PANELS.forEach(p => {
-        const node = buildPanelDOM(rows, p.groupCol, p.tickerCol, quoteMap);
+        const node = buildPanelDOM(rows, p.groupCol, p.tickerCol, quoteMap, nameMap);
         if (node) frag.appendChild(node);
     });
 
-    // Atomic swap
     const pageEl = document.getElementById(`page-${idx}`);
     if (initialized) {
         pageEl.classList.add("blink");
@@ -305,17 +364,14 @@ async function refreshPage(idx) {
 }
 
 // ─────────────────────────────────────────────────────────
-// REFRESH ALL PAGES
+// REFRESH ALL
 // ─────────────────────────────────────────────────────────
 async function refreshAll() {
-    // Reset the queue at the start of each full refresh cycle
     apiQueue = Promise.resolve();
-
     for (let i = 0; i < SHEETS.length; i++) {
         setStatus(`Loading page ${i + 1}…`);
         await refreshPage(i);
     }
-
     initialized = true;
     setStatus("OK");
     document.getElementById("last-update").textContent =
