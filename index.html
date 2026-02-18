@@ -12,7 +12,6 @@ body {
     font-family: monospace;
     font-size: 13px;
 }
-
 .header {
     display: flex;
     align-items: center;
@@ -45,10 +44,7 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-.page {
-    display: none;
-    padding: 10px 12px;
-}
+.page { display: none; padding: 10px 12px; }
 .page.active { display: flex; align-items: flex-start; }
 
 .panel {
@@ -95,7 +91,6 @@ body {
     100% { opacity: 1; }
 }
 .blink { animation: blink-flash .4s ease-out; }
-
 .spinner { color: #444; padding: 40px 20px; letter-spacing: 2px; font-size: 12px; }
 
 .statusbar {
@@ -110,6 +105,7 @@ body {
     gap: 20px;
 }
 .statusbar span { color: #777; }
+.status-warn { color: #ffaa00 !important; }
 </style>
 </head>
 <body>
@@ -118,10 +114,8 @@ body {
     <div class="header-title">◆ BLOOMBERG LITE</div>
     <div class="header-time" id="clock"></div>
 </div>
-
 <div class="tabs" id="tabs"></div>
 <div id="pages"></div>
-
 <div class="statusbar">
     <span id="status">Loading…</span>
     <span id="last-update"></span>
@@ -131,9 +125,10 @@ body {
 // ─────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────
-const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
-const REFRESH_MS    = 60000;   // refresh every 60s (gives time to finish fetching)
-const CALL_DELAY_MS = 1200;    // 1.2s between calls = 50/min, safely under limit
+const API_KEY        = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+const REFRESH_MS     = 120000;  // auto-refresh every 2 min
+const CALL_DELAY_MS  = 1200;    // 1.2s between each call = ~50/min
+const PAUSE_ON_429   = 65000;   // if we get a 429, pause 65s (a full minute resets the limit)
 
 const SHEETS = [
     { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
@@ -148,108 +143,16 @@ const PANELS = [
 ];
 
 // ─────────────────────────────────────────────────────────
-// NAME CACHE — persists in memory for the session
-// Company names never change so we only fetch them once
+// UTILITIES
 // ─────────────────────────────────────────────────────────
-const nameCache = {};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function shortenName(raw) {
-    let name = (raw || "").trim();
-    name = name
-        .replace(/ Inc\.?$/i, "").replace(/ Corp\.?$/i, "")
-        .replace(/ Corporation$/i, "").replace(/ Ltd\.?$/i, "")
-        .replace(/ Limited$/i, "").replace(/ Co\.?$/i, "")
-        .replace(/ Holdings?$/i, "").replace(/ Group$/i, "")
-        .replace(/ Technologies?$/i, " Tech")
-        .replace(/ Pharmaceuticals?$/i, " Pharma")
-        .replace(/ Therapeutics?$/i, " Tx")
-        .replace(/ Biosciences?$/i, " Bio");
-    return name.length > 18 ? name.slice(0, 17) + "…" : name;
+function setStatus(msg, warn = false) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = warn ? "status-warn" : "";
 }
 
-// ─────────────────────────────────────────────────────────
-// STRICT SERIAL QUEUE — one HTTP request at a time
-// ─────────────────────────────────────────────────────────
-let apiQueue = Promise.resolve();
-
-// Wraps any async fn into the serial queue with delay + retry on 429
-function enqueue(fn) {
-    const p = apiQueue.then(async () => {
-        await sleep(CALL_DELAY_MS);
-        // Try up to 3 times with backoff if we still hit 429
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                const result = await fn();
-                return result;
-            } catch (e) {
-                if (attempt < 2) await sleep(3000 * (attempt + 1));
-            }
-        }
-        return null;
-    });
-    // Keep the queue chain going even if this slot throws
-    apiQueue = p.then(() => {}, () => {});
-    return p;
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-// ─────────────────────────────────────────────────────────
-// API CALLS
-// ─────────────────────────────────────────────────────────
-async function fetchQuote(symbol) {
-    return enqueue(async () => {
-        const res = await fetch(
-            `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`
-        );
-        if (!res.ok) throw new Error(`${res.status}`);
-        const data = await res.json();
-        return (data && data.c != null && data.c !== 0) ? data : null;
-    });
-}
-
-async function fetchName(symbol) {
-    // Already cached — return immediately without using queue slot
-    if (nameCache[symbol] !== undefined) return nameCache[symbol];
-
-    return enqueue(async () => {
-        const res = await fetch(
-            `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`
-        );
-        if (!res.ok) throw new Error(`${res.status}`);
-        const data = await res.json();
-        const name = shortenName(data.name);
-        nameCache[symbol] = name;
-        return name;
-    });
-}
-
-// ─────────────────────────────────────────────────────────
-// CSV LOADER
-// ─────────────────────────────────────────────────────────
-async function loadCSV(url) {
-    const res  = await fetch(url);
-    const text = await res.text();
-    return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
-}
-
-// Get all unique tickers from a parsed CSV across all panels
-function extractTickers(rows) {
-    const seen = new Set();
-    const list = [];
-    PANELS.forEach(p => {
-        rows.forEach(row => {
-            const t = row[p.tickerCol] || "";
-            const g = row[p.groupCol]  || "";
-            if (t && g && !seen.has(t)) { seen.add(t); list.push(t); }
-        });
-    });
-    return list;
-}
-
-// ─────────────────────────────────────────────────────────
-// CLOCK
-// ─────────────────────────────────────────────────────────
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent =
@@ -260,10 +163,106 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ─────────────────────────────────────────────────────────
-// BUILD TABS + PAGE WRAPPERS
+// CORE API FETCHER — fully serial, pauses on 429
+// All requests go through this single function so they can
+// never overlap, even across pages.
+// ─────────────────────────────────────────────────────────
+let fetchLock = Promise.resolve();  // the one and only queue
+
+async function apiFetch(url, label) {
+    // Wait for any in-progress call to finish, then take the lock
+    await fetchLock;
+
+    let resolve;
+    fetchLock = new Promise(r => { resolve = r; });
+
+    try {
+        await sleep(CALL_DELAY_MS);  // always wait before firing
+
+        let attempts = 0;
+        while (attempts < 5) {
+            const res = await fetch(url);
+
+            if (res.status === 429) {
+                attempts++;
+                const waitSec = Math.round(PAUSE_ON_429 / 1000);
+                setStatus(`Rate limited — pausing ${waitSec}s… (attempt ${attempts}/5)`, true);
+                await sleep(PAUSE_ON_429);
+                continue; // retry same URL
+            }
+
+            if (!res.ok) return null;
+            return await res.json();
+        }
+        return null; // gave up after 5 attempts
+    } finally {
+        resolve(); // release lock so next call can proceed
+    }
+}
+
+// ─────────────────────────────────────────────────────────
+// NAME CACHE — fetch once, keep forever in memory
+// ─────────────────────────────────────────────────────────
+const nameCache = {};
+
+function shortenName(raw) {
+    let n = (raw || "").trim();
+    n = n.replace(/ Inc\.?$/i,"").replace(/ Corp\.?$/i,"")
+         .replace(/ Corporation$/i,"").replace(/ Ltd\.?$/i,"")
+         .replace(/ Limited$/i,"").replace(/ Co\.?$/i,"")
+         .replace(/ Holdings?$/i,"").replace(/ Group$/i,"")
+         .replace(/ Technologies?$/i," Tech")
+         .replace(/ Pharmaceuticals?$/i," Pharma")
+         .replace(/ Therapeutics?$/i," Tx")
+         .replace(/ Biosciences?$/i," Bio");
+    return n.length > 18 ? n.slice(0,17)+"…" : n;
+}
+
+async function getName(symbol) {
+    if (nameCache[symbol] !== undefined) return nameCache[symbol];
+    setStatus(`Getting name: ${symbol}…`);
+    const data = await apiFetch(
+        `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`,
+        symbol
+    );
+    const name = data ? shortenName(data.name) : "";
+    nameCache[symbol] = name;
+    return name;
+}
+
+async function getQuote(symbol) {
+    setStatus(`Fetching ${symbol}…`);
+    const data = await apiFetch(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`,
+        symbol
+    );
+    if (!data || data.c == null || data.c === 0) return null;
+    return data;
+}
+
+// ─────────────────────────────────────────────────────────
+// CSV
+// ─────────────────────────────────────────────────────────
+async function loadCSV(url) {
+    const res  = await fetch(url);
+    const text = await res.text();
+    return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
+}
+
+function extractTickers(rows) {
+    const seen = new Set(), list = [];
+    PANELS.forEach(p => rows.forEach(row => {
+        const t = row[p.tickerCol] || "", g = row[p.groupCol] || "";
+        if (t && g && !seen.has(t)) { seen.add(t); list.push(t); }
+    }));
+    return list;
+}
+
+// ─────────────────────────────────────────────────────────
+// UI
 // ─────────────────────────────────────────────────────────
 function buildChrome() {
-    const tabsEl  = document.getElementById("tabs");
+    const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
     SHEETS.forEach((sheet, i) => {
         const tab = document.createElement("button");
@@ -281,16 +280,13 @@ function buildChrome() {
 }
 
 function switchPage(idx) {
-    document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", i === idx));
-    document.querySelectorAll(".page").forEach((p, i) => p.classList.toggle("active", i === idx));
+    document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
+    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
-// ─────────────────────────────────────────────────────────
-// BUILD PANEL DOM from pre-fetched data
-// ─────────────────────────────────────────────────────────
 function buildPanelDOM(rows, groupCol, tickerCol, quoteMap, nameMap) {
     const items = rows
-        .map(r => ({ group: r[groupCol] || "", ticker: r[tickerCol] || "" }))
+        .map(r => ({ group: r[groupCol]||"", ticker: r[tickerCol]||"" }))
         .filter(r => r.group && r.ticker);
     if (!items.length) return null;
 
@@ -313,13 +309,11 @@ function buildPanelDOM(rows, groupCol, tickerCol, quoteMap, nameMap) {
         const up    = q.d >= 0;
         const color = up ? "green" : "red";
         const sign  = up ? "+" : "";
-        const name  = nameMap[item.ticker] || "";
-
-        const row = document.createElement("div");
+        const row   = document.createElement("div");
         row.className = `row ${color}`;
         row.innerHTML = `
             <div class="cell-ticker">${item.ticker}</div>
-            <div class="cell-name">${name}</div>
+            <div class="cell-name">${nameMap[item.ticker] || ""}</div>
             <div class="cell-price">${q.c.toFixed(2)}</div>
             <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
             <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
@@ -331,38 +325,29 @@ function buildPanelDOM(rows, groupCol, tickerCol, quoteMap, nameMap) {
 }
 
 // ─────────────────────────────────────────────────────────
-// REFRESH ONE PAGE
-// Each page: fetch names (cached after first time) then quotes
+// REFRESH
 // ─────────────────────────────────────────────────────────
 let initialized = false;
 
 async function refreshPage(idx) {
     const rows    = await loadCSV(SHEETS[idx].url);
     const tickers = extractTickers(rows);
+
+    // Names: only fetch ones not yet cached (strictly serial via apiFetch)
+    for (const t of tickers) {
+        if (nameCache[t] === undefined) await getName(t);
+    }
+
+    // Quotes: always fetch fresh (strictly serial)
     const quoteMap = {};
-    const nameMap  = {};
-
-    // First pass: fetch any names not yet cached (only happens on very first load)
-    const needNames = tickers.filter(t => nameCache[t] === undefined);
-    if (needNames.length > 0) {
-        setStatus(`Fetching names (${needNames.length} new)…`);
-        // Kick off all name fetches — they're serialized by the queue internally
-        await Promise.all(needNames.map(t => fetchName(t)));
+    for (const t of tickers) {
+        quoteMap[t] = await getQuote(t);
     }
 
-    // Copy cached names
-    tickers.forEach(t => { nameMap[t] = nameCache[t] || ""; });
-
-    // Second pass: fetch all quotes (always needed for fresh prices)
-    for (const ticker of tickers) {
-        setStatus(`Fetching ${ticker}…`);
-        quoteMap[ticker] = await fetchQuote(ticker);
-    }
-
-    // Build and swap DOM
+    // Swap DOM atomically
     const frag = document.createDocumentFragment();
     PANELS.forEach(p => {
-        const node = buildPanelDOM(rows, p.groupCol, p.tickerCol, quoteMap, nameMap);
+        const node = buildPanelDOM(rows, p.groupCol, p.tickerCol, quoteMap, nameCache);
         if (node) frag.appendChild(node);
     });
 
@@ -375,13 +360,9 @@ async function refreshPage(idx) {
     pageEl.appendChild(frag);
 }
 
-// ─────────────────────────────────────────────────────────
-// REFRESH ALL PAGES
-// ─────────────────────────────────────────────────────────
 async function refreshAll() {
-    apiQueue = Promise.resolve(); // reset queue
     for (let i = 0; i < SHEETS.length; i++) {
-        setStatus(`Loading page ${i + 1}…`);
+        setStatus(`Loading page ${i+1}…`);
         await refreshPage(i);
     }
     initialized = true;
@@ -390,13 +371,6 @@ async function refreshAll() {
         "Updated " + new Date().toLocaleTimeString("en-US", { hour12: false });
 }
 
-function setStatus(msg) {
-    document.getElementById("status").textContent = msg;
-}
-
-// ─────────────────────────────────────────────────────────
-// INIT
-// ─────────────────────────────────────────────────────────
 buildChrome();
 refreshAll();
 setInterval(refreshAll, REFRESH_MS);
