@@ -7,118 +7,110 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { height: 100%; }
 body {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background: #0a0a0a;
-    color: #00ffcc;
-    font-family: monospace;
-    font-size: 13px;
+&nbsp;&nbsp;&nbsp;&nbsp;height: 100%;
+&nbsp;&nbsp;&nbsp;&nbsp;display: flex;
+&nbsp;&nbsp;&nbsp;&nbsp;flex-direction: column;
+&nbsp;&nbsp;&nbsp;&nbsp;background: #0a0a0a;
+&nbsp;&nbsp;&nbsp;&nbsp;color: #00ffcc;
+&nbsp;&nbsp;&nbsp;&nbsp;font-family: monospace;
+&nbsp;&nbsp;&nbsp;&nbsp;font-size: 13px;
 }
 .header {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    color: orange;
-    padding: 6px 12px;
-    border-bottom: 1px solid #333;
-    background: #111;
+&nbsp;&nbsp;&nbsp;&nbsp;flex-shrink: 0;
+&nbsp;&nbsp;&nbsp;&nbsp;display: flex;
+&nbsp;&nbsp;&nbsp;&nbsp;align-items: center;
+&nbsp;&nbsp;&nbsp;&nbsp;color: orange;
+&nbsp;&nbsp;&nbsp;&nbsp;padding: 6px 12px;
+&nbsp;&nbsp;&nbsp;&nbsp;border-bottom: 1px solid #333;
+&nbsp;&nbsp;&nbsp;&nbsp;background: #111;
 }
 .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
 .header-time  { color: #888; font-size: 11px; margin-left: auto; }
-
 .tabs {
-    flex-shrink: 0;
-    display: flex;
-    gap: 2px;
-    padding: 4px 12px;
-    background: #111;
-    border-bottom: 1px solid #333;
+    flex-shrink: 0;
+    display: flex;
+    gap: 2px;
+    padding: 4px 12px;
+    background: #111;
+    border-bottom: 1px solid #333;
 }
 .tab {
-    padding: 3px 14px;
-    cursor: pointer;
-    border: 1px solid #444;
-    color: #888;
-    background: transparent;
-    font-family: monospace;
-    font-size: 11px;
-    letter-spacing: 1px;
-    transition: all .15s;
+    padding: 3px 14px;
+    cursor: pointer;
+    border: 1px solid #444;
+    color: #888;
+    background: transparent;
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: all .15s;
 }
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
-
 #pages {
-    flex: 1 1 0;
-    min-height: 0;
-    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
 }
 .page {
-    display: none;
-    position: absolute;
-    inset: 0;
-    padding: 4px 6px;
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: 4px 6px;
 }
 .page.active { display: flex; }
-
 .col {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    padding: 0 3px;
-    border-right: 1px solid #1a1a1a;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 3px;
+    border-right: 1px solid #1a1a1a;
 }
 .col:first-child { padding-left: 0; }
 .col:last-child  { border-right: none; padding-right: 0; }
-
 .statusbar {
-    flex-shrink: 0;
-    background: #111;
-    border-top: 1px solid #222;
-    padding: 2px 12px;
-    font-size: 10px;
-    color: #555;
-    display: flex;
-    gap: 16px;
+    flex-shrink: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    padding: 2px 12px;
+    font-size: 10px;
+    color: #555;
+    display: flex;
+    gap: 16px;
 }
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
-
 .group {
-    color: orange;
-    margin-top: 12px;
-    margin-bottom: 1px;
-    font-size: 11px;
-    letter-spacing: 1px;
-    border-bottom: 1px solid #1e1e1e;
-    padding-bottom: 2px;
-    text-transform: uppercase;
+    color: orange;
+    margin-top: 12px;
+    margin-bottom: 1px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #1e1e1e;
+    padding-bottom: 2px;
+    text-transform: uppercase;
 }
 .group:first-child { margin-top: 2px; }
-
 .row {
-    display: grid;
-    grid-template-columns: 48px 82px 66px 58px 56px 20px;
-    padding: 2px 0;
-    border-bottom: 1px solid #0f0f0f;
-    align-items: center;
-    gap: 1px;
+    display: grid;
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
+    padding: 2px 0;
+    border-bottom: 1px solid #0f0f0f;
+    align-items: center;
+    gap: 1px;
 }
 .row:hover { background: #141414; }
-
 .cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
 .cell-name   {
-    text-align: left; color: #ffb300; font-size: 11px;
-    padding-right: 3px; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap;
-    cursor: default; opacity: 0.85;
+    text-align: left; color: #ffb300; font-size: 11px;
+    padding-right: 3px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+    cursor: default; opacity: 0.85;
 }
 .cell-price { text-align: right; }
 .cell-chg   { text-align: right; }
 .cell-pct   { text-align: right; }
 .cell-age   { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
-
 .green { color: #00e676; }
 .red   { color: #ff5252; }
 .spinner { color: #333; padding: 20px 6px; letter-spacing: 2px; font-size: 11px; }
@@ -126,16 +118,15 @@ body {
 </head>
 <body>
 <div class="header">
-    <div class="header-title">◆ BLOOMBERG LITE</div>
-    <div class="header-time" id="clock"></div>
+&nbsp;&nbsp;&nbsp;&nbsp;<div class="header-title">◆ BLOOMBERG LITE</div>
+&nbsp;&nbsp;&nbsp;&nbsp;<div class="header-time" id="clock"></div>
 </div>
 <div class="tabs" id="tabs"></div>
 <div id="pages"></div>
 <div class="statusbar">
-    <span id="status">Loading…</span>
-    <span id="counter"></span>
+&nbsp;&nbsp;&nbsp;&nbsp;<span id="status">Loading…</span>
+&nbsp;&nbsp;&nbsp;&nbsp;<span id="counter"></span>
 </div>
-
 <script>
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
@@ -145,22 +136,22 @@ const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwR
 
 // ── CSV parser (handles quoted commas) ──
 function parseCSV(text) {
-    return text.trim().split("\n").map(line => {
-        const fields = [];
-        let cur = "", inQ = false;
-        for (const ch of line) {
-            if (ch === '"') { inQ = !inQ; }
-            else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
-            else { cur += ch; }
-        }
-        fields.push(cur.trim());
-        return fields;
-    });
+&nbsp;&nbsp;&nbsp;&nbsp;return text.trim().split("\n").map(line => {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const fields = [];
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;let cur = "", inQ = false;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;for (const ch of line) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (ch === '"') { inQ = !inQ; }
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;else { cur += ch; }
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;fields.push(cur.trim());
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return fields;
+&nbsp;&nbsp;&nbsp;&nbsp;});
 }
 
 async function loadCSV(url) {
-    const r = await fetch(url);
-    return parseCSV(await r.text());
+&nbsp;&nbsp;&nbsp;&nbsp;const r = await fetch(url);
+&nbsp;&nbsp;&nbsp;&nbsp;return parseCSV(await r.text());
 }
 
 // ── State ──
@@ -172,289 +163,289 @@ let   numPages   = 0;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function setStatus(msg, warn=false) {
-    const el = document.getElementById("status");
-    el.textContent = msg;
-    el.className = warn ? "status-warn" : "";
+&nbsp;&nbsp;&nbsp;&nbsp;const el = document.getElementById("status");
+&nbsp;&nbsp;&nbsp;&nbsp;el.textContent = msg;
+&nbsp;&nbsp;&nbsp;&nbsp;el.className = warn ? "status-warn" : "";
 }
 function setCounter(i, n) {
-    document.getElementById("counter").textContent = `${i} / ${n}`;
+&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("counter").textContent = `${i} / ${n}`;
 }
 function updateClock() {
-    const now = new Date();
-    document.getElementById("clock").textContent =
-        now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})
-        + "  " + now.toLocaleTimeString("en-US",{hour12:false});
+&nbsp;&nbsp;&nbsp;&nbsp;const now = new Date();
+&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("clock").textContent =
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ "  " + now.toLocaleTimeString("en-US",{hour12:false});
 }
 setInterval(updateClock, 1000);
 updateClock();
 
 function ageLabel(ts) {
-    if (!ts) return "";
-    const s = Math.floor((Date.now()-ts)/1000);
-    if (s < 60)   return s+"s";
-    if (s < 3600) return Math.floor(s/60)+"m";
-    return Math.floor(s/3600)+"h";
+&nbsp;&nbsp;&nbsp;&nbsp;if (!ts) return "";
+&nbsp;&nbsp;&nbsp;&nbsp;const s = Math.floor((Date.now()-ts)/1000);
+&nbsp;&nbsp;&nbsp;&nbsp;if (s < 60)   return s+"s";
+&nbsp;&nbsp;&nbsp;&nbsp;if (s < 3600) return Math.floor(s/60)+"m";
+&nbsp;&nbsp;&nbsp;&nbsp;return Math.floor(s/3600)+"h";
 }
 
 // ── Build master list from single sheet ──
 // Columns repeat in triplets: group, ticker, name (cols A/B/C, D/E/F, G/H/I, ...)
 async function buildMasterList() {
-    masterList = [];
-    const rows = await loadCSV(SHEET_URL);
+&nbsp;&nbsp;&nbsp;&nbsp;masterList = [];
+&nbsp;&nbsp;&nbsp;&nbsp;const rows = await loadCSV(SHEET_URL);
 
-    // Find max column count across all rows
-    const maxCols = Math.max(...rows.map(r => r.length));
+&nbsp;&nbsp;&nbsp;&nbsp;// Find max column count across all rows
+&nbsp;&nbsp;&nbsp;&nbsp;const maxCols = Math.max(...rows.map(r => r.length));
 
-    // Collect all items in order: scan triplets left to right, top to bottom per triplet
-    const allItems = []; // { group, ticker, name }
-    for (let base = 0; base + 1 < maxCols; base += 3) {
-        const groupCol  = base;
-        const tickerCol = base + 1;
-        const nameCol   = base + 2;
-        rows.forEach(row => {
-            const group  = row[groupCol]  || "";
-            const ticker = row[tickerCol] || "";
-            const name   = row[nameCol]   || "";
-            if (group && ticker) allItems.push({ group, ticker, name });
-        });
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;// Collect all items in order: scan triplets left to right, top to bottom per triplet
+&nbsp;&nbsp;&nbsp;&nbsp;const allItems = []; // { group, ticker, name }
+&nbsp;&nbsp;&nbsp;&nbsp;for (let base = 0; base + 1 < maxCols; base += 3) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const groupCol  = base;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const tickerCol = base + 1;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const nameCol   = base + 2;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rows.forEach(row => {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const group  = row[groupCol]  || "";
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const ticker = row[tickerCol] || "";
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const name   = row[nameCol]   || "";
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (group && ticker) allItems.push({ group, ticker, name });
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;});
+&nbsp;&nbsp;&nbsp;&nbsp;}
 
-    // Deduplicate
-    const seen = new Set();
-    const unique = allItems.filter(item => {
-        if (seen.has(item.ticker)) return false;
-        seen.add(item.ticker);
-        return true;
-    });
+&nbsp;&nbsp;&nbsp;&nbsp;// Deduplicate
+&nbsp;&nbsp;&nbsp;&nbsp;const seen = new Set();
+&nbsp;&nbsp;&nbsp;&nbsp;const unique = allItems.filter(item => {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (seen.has(item.ticker)) return false;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;seen.add(item.ticker);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return true;
+&nbsp;&nbsp;&nbsp;&nbsp;});
 
-    // Measure actual available col height from a temporary test element
-    const testCol = document.createElement("div");
-    testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
-    document.getElementById("pages").appendChild(testCol);
-    const colH = testCol.offsetHeight;
-    document.getElementById("pages").removeChild(testCol);
+&nbsp;&nbsp;&nbsp;&nbsp;// Measure actual available col height from a temporary test element
+&nbsp;&nbsp;&nbsp;&nbsp;const testCol = document.createElement("div");
+&nbsp;&nbsp;&nbsp;&nbsp;testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
+&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("pages").appendChild(testCol);
+&nbsp;&nbsp;&nbsp;&nbsp;const colH = testCol.offsetHeight;
+&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("pages").removeChild(testCol);
 
-    // Each row is 20px, group headers ~14px, estimate 1 group per 10 tickers
-    const rowsPerCol     = Math.max(10, Math.floor(colH / 21));
-    const tickersPerPage = rowsPerCol * NUM_COLS;
+&nbsp;&nbsp;&nbsp;&nbsp;// Each row is 20px, group headers ~14px, estimate 1 group per 10 tickers
+&nbsp;&nbsp;&nbsp;&nbsp;const rowsPerCol     = Math.max(10, Math.floor(colH / 21));
+&nbsp;&nbsp;&nbsp;&nbsp;const tickersPerPage = rowsPerCol * NUM_COLS;
 
-    // Assign each ticker to a page, column, and order
-    unique.forEach((item, idx) => {
-        const pageIdx = Math.floor(idx / tickersPerPage);
-        const posInPage = idx % tickersPerPage;
-        const colIdx  = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
-        tickerMeta[item.ticker] = {
-            group:   item.group,
-            name:    item.name,
-            pageIdx,
-            colIdx,
-            order:   posInPage
-        };
-        masterList.push(item.ticker);
-    });
+&nbsp;&nbsp;&nbsp;&nbsp;// Assign each ticker to a page, column, and order
+&nbsp;&nbsp;&nbsp;&nbsp;unique.forEach((item, idx) => {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const pageIdx = Math.floor(idx / tickersPerPage);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const posInPage = idx % tickersPerPage;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const colIdx  = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tickerMeta[item.ticker] = {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;group:   item.group,
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;name:    item.name,
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;pageIdx,
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;colIdx,
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;order:   posInPage
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;};
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;masterList.push(item.ticker);
+&nbsp;&nbsp;&nbsp;&nbsp;});
 
-    numPages = Math.ceil(unique.length / tickersPerPage) || 1;
+&nbsp;&nbsp;&nbsp;&nbsp;numPages = Math.ceil(unique.length / tickersPerPage) || 1;
 }
 
 // ── Build chrome (tabs + col containers) ──
 function buildChrome() {
-    const tabsEl  = document.getElementById("tabs");
-    const pagesEl = document.getElementById("pages");
-    for (let i = 0; i < numPages; i++) {
-        const tab = document.createElement("button");
-        tab.className = "tab" + (i===0?" active":"");
-        tab.textContent = `PAGE ${i+1}`;
-        tab.onclick = () => switchPage(i);
-        tabsEl.appendChild(tab);
+&nbsp;&nbsp;&nbsp;&nbsp;const tabsEl  = document.getElementById("tabs");
+&nbsp;&nbsp;&nbsp;&nbsp;const pagesEl = document.getElementById("pages");
+&nbsp;&nbsp;&nbsp;&nbsp;for (let i = 0; i < numPages; i++) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const tab = document.createElement("button");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tab.className = "tab" + (i===0?" active":"");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tab.textContent = `PAGE ${i+1}`;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tab.onclick = () => switchPage(i);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tabsEl.appendChild(tab);
 
-        const page = document.createElement("div");
-        page.className = "page" + (i===0?" active":"");
-        page.id = `page-${i}`;
-        for (let c = 0; c < NUM_COLS; c++) {
-            const col = document.createElement("div");
-            col.className = "col";
-            col.id = `col-${i}-${c}`;
-            page.appendChild(col);
-        }
-        pagesEl.appendChild(page);
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const page = document.createElement("div");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;page.className = "page" + (i===0?" active":"");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;page.id = `page-${i}`;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;for (let c = 0; c < NUM_COLS; c++) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const col = document.createElement("div");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;col.className = "col";
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;col.id = `col-${i}-${c}`;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;page.appendChild(col);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;pagesEl.appendChild(page);
+&nbsp;&nbsp;&nbsp;&nbsp;}
 }
 
 function switchPage(idx) {
-    document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
-    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+&nbsp;&nbsp;&nbsp;&nbsp;document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
+&nbsp;&nbsp;&nbsp;&nbsp;document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
 document.addEventListener("keydown", e => {
-    if (e.key==="ArrowRight"||e.key==="ArrowLeft") {
-        const tabs = document.querySelectorAll(".tab");
-        let cur = [...tabs].findIndex(t=>t.classList.contains("active"));
-        cur = e.key==="ArrowRight" ? (cur+1)%numPages : (cur-1+numPages)%numPages;
-        switchPage(cur);
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;if (e.key==="ArrowRight"||e.key==="ArrowLeft") {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const tabs = document.querySelectorAll(".tab");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;let cur = [...tabs].findIndex(t=>t.classList.contains("active"));
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;cur = e.key==="ArrowRight" ? (cur+1)%numPages : (cur-1+numPages)%numPages;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;switchPage(cur);
+&nbsp;&nbsp;&nbsp;&nbsp;}
 });
 
 // Double-click ticker → Yahoo Finance
 document.addEventListener("dblclick", e => {
-    const cell = e.target.closest(".cell-ticker");
-    if (!cell) return;
-    window.open(`https://finance.yahoo.com/quote/${cell.textContent.trim()}/`, "_blank");
+&nbsp;&nbsp;&nbsp;&nbsp;const cell = e.target.closest(".cell-ticker");
+&nbsp;&nbsp;&nbsp;&nbsp;if (!cell) return;
+&nbsp;&nbsp;&nbsp;&nbsp;window.open(`https://finance.yahoo.com/quote/${cell.textContent.trim()}/`, "_blank");
 });
 
 // ── Render one ticker ──
 function insertByOrder(container, el, order) {
-    el.dataset.order = order;
-    const after = [...container.children].find(c => parseFloat(c.dataset.order ?? 999) > order);
-    if (after) container.insertBefore(el, after);
-    else container.appendChild(el);
+&nbsp;&nbsp;&nbsp;&nbsp;el.dataset.order = order;
+&nbsp;&nbsp;&nbsp;&nbsp;const after = [...container.children].find(c => parseFloat(c.dataset.order ?? 999) > order);
+&nbsp;&nbsp;&nbsp;&nbsp;if (after) container.insertBefore(el, after);
+&nbsp;&nbsp;&nbsp;&nbsp;else container.appendChild(el);
 }
 
 function renderTicker(ticker) {
-    const q = quoteStore[ticker], meta = tickerMeta[ticker];
-    if (!q || !meta) return;
-    const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
-    if (!colEl) return;
+&nbsp;&nbsp;&nbsp;&nbsp;const q = quoteStore[ticker], meta = tickerMeta[ticker];
+&nbsp;&nbsp;&nbsp;&nbsp;if (!q || !meta) return;
+&nbsp;&nbsp;&nbsp;&nbsp;const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
+&nbsp;&nbsp;&nbsp;&nbsp;if (!colEl) return;
 
-    const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
-    if (!document.getElementById(gid)) {
-        const g = document.createElement("div");
-        g.className = "group"; g.id = gid;
-        g.textContent = meta.group;
-        insertByOrder(colEl, g, meta.order - 0.5);
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
+&nbsp;&nbsp;&nbsp;&nbsp;if (!document.getElementById(gid)) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const g = document.createElement("div");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;g.className = "group"; g.id = gid;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;g.textContent = meta.group;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;insertByOrder(colEl, g, meta.order - 0.5);
+&nbsp;&nbsp;&nbsp;&nbsp;}
 
-    const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
-    let rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
-    if (!rowEl) {
-        rowEl = document.createElement("div");
-        rowEl.dataset.ticker = ticker;
-        insertByOrder(colEl, rowEl, meta.order);
-    }
-    rowEl.className = `row ${color}`;
-    rowEl.innerHTML = `
-        <div class="cell-ticker">${ticker}</div>
-        <div class="cell-name" title="${meta.name}">${meta.name}</div>
-        <div class="cell-price">${q.c.toFixed(2)}</div>
-        <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
-        <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
-        <div class="cell-age">${ageLabel(q.updatedAt)}</div>
-    `;
+&nbsp;&nbsp;&nbsp;&nbsp;const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
+&nbsp;&nbsp;&nbsp;&nbsp;let rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
+&nbsp;&nbsp;&nbsp;&nbsp;if (!rowEl) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rowEl = document.createElement("div");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rowEl.dataset.ticker = ticker;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;insertByOrder(colEl, rowEl, meta.order);
+&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;rowEl.className = `row ${color}`;
+&nbsp;&nbsp;&nbsp;&nbsp;rowEl.innerHTML = `
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<div class="cell-ticker">${ticker}</div>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<div class="cell-name" title="$$   {meta.name}">   $${meta.name}</div>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<div class="cell-price">${q.c.toFixed(2)}</div>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<div class="cell-chg">$$   {sign}   $${q.d.toFixed(2)}</div>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<div class="cell-pct">$$   {sign}   $${q.dp.toFixed(2)}%</div>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<div class="cell-age">${ageLabel(q.updatedAt)}</div>
+&nbsp;&nbsp;&nbsp;&nbsp;`;
 
-    // After first 5 renders, check if col0 overflows and repack if needed
-    if (!window._repackDone && Object.keys(quoteStore).length === 5) {
-        window._repackDone = true;
-        requestAnimationFrame(checkAndRepack);
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;// After first 5 renders, check if col0 overflows and repack if needed
+&nbsp;&nbsp;&nbsp;&nbsp;if (!window._repackDone && Object.keys(quoteStore).length === 5) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;window._repackDone = true;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;requestAnimationFrame(checkAndRepack);
+&nbsp;&nbsp;&nbsp;&nbsp;}
 }
 
 function checkAndRepack() {
-    const col0 = document.getElementById("col-0-0");
-    if (!col0) return;
-    if (col0.scrollHeight <= col0.offsetHeight) return; // no overflow, we're good
+&nbsp;&nbsp;&nbsp;&nbsp;const col0 = document.getElementById("col-0-0");
+&nbsp;&nbsp;&nbsp;&nbsp;if (!col0) return;
+&nbsp;&nbsp;&nbsp;&nbsp;if (col0.scrollHeight <= col0.offsetHeight) return; // no overflow, we're good
 
-    // Calculate actual row height from real DOM
-    const sampleRow = col0.querySelector(".row");
-    if (!sampleRow) return;
-    const actualRowH = sampleRow.offsetHeight;
-    const colH = col0.offsetHeight;
-    const newRowsPerCol = Math.floor(colH / (actualRowH + 1)); // +1 for border
-    const newTickersPerPage = newRowsPerCol * NUM_COLS;
+&nbsp;&nbsp;&nbsp;&nbsp;// Calculate actual row height from real DOM
+&nbsp;&nbsp;&nbsp;&nbsp;const sampleRow = col0.querySelector(".row");
+&nbsp;&nbsp;&nbsp;&nbsp;if (!sampleRow) return;
+&nbsp;&nbsp;&nbsp;&nbsp;const actualRowH = sampleRow.offsetHeight;
+&nbsp;&nbsp;&nbsp;&nbsp;const colH = col0.offsetHeight;
+&nbsp;&nbsp;&nbsp;&nbsp;const newRowsPerCol = Math.floor(colH / (actualRowH + 1)); // +1 for border
+&nbsp;&nbsp;&nbsp;&nbsp;const newTickersPerPage = newRowsPerCol * NUM_COLS;
 
-    // Reassign all ticker metadata with new values
-    const allTickers = [...masterList];
-    // Group by page to reassign
-    let globalIdx = 0;
-    // Rebuild pages mapping
-    for (const t of allTickers) {
-        const pageIdx = Math.floor(globalIdx / newTickersPerPage);
-        const posInPage = globalIdx % newTickersPerPage;
-        const colIdx = Math.min(Math.floor(posInPage / newRowsPerCol), NUM_COLS - 1);
-        tickerMeta[t].pageIdx = pageIdx;
-        tickerMeta[t].colIdx  = colIdx;
-        tickerMeta[t].order   = posInPage;
-        globalIdx++;
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;// Reassign all ticker metadata with new values
+&nbsp;&nbsp;&nbsp;&nbsp;const allTickers = [...masterList];
+&nbsp;&nbsp;&nbsp;&nbsp;// Group by page to reassign
+&nbsp;&nbsp;&nbsp;&nbsp;let globalIdx = 0;
+&nbsp;&nbsp;&nbsp;&nbsp;// Rebuild pages mapping
+&nbsp;&nbsp;&nbsp;&nbsp;for (const t of allTickers) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const pageIdx = Math.floor(globalIdx / newTickersPerPage);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const posInPage = globalIdx % newTickersPerPage;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const colIdx = Math.min(Math.floor(posInPage / newRowsPerCol), NUM_COLS - 1);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tickerMeta[t].pageIdx = pageIdx;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tickerMeta[t].colIdx  = colIdx;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tickerMeta[t].order   = posInPage;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;globalIdx++;
+&nbsp;&nbsp;&nbsp;&nbsp;}
 
-    // Rebuild chrome with new page count
-    const newNumPages = Math.ceil(allTickers.length / newTickersPerPage);
-    if (newNumPages !== numPages) {
-        numPages = newNumPages;
-        // Clear and rebuild tabs and pages
-        document.getElementById("tabs").innerHTML = "";
-        document.getElementById("pages").innerHTML = "";
-        buildChrome();
-    } else {
-        // Just clear all cols and re-render existing quotes
-        document.querySelectorAll(".col").forEach(c => c.innerHTML = "");
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;// Rebuild chrome with new page count
+&nbsp;&nbsp;&nbsp;&nbsp;const newNumPages = Math.ceil(allTickers.length / newTickersPerPage);
+&nbsp;&nbsp;&nbsp;&nbsp;if (newNumPages !== numPages) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;numPages = newNumPages;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Clear and rebuild tabs and pages
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("tabs").innerHTML = "";
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("pages").innerHTML = "";
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;buildChrome();
+&nbsp;&nbsp;&nbsp;&nbsp;} else {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// Just clear all cols and re-render existing quotes
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;document.querySelectorAll(".col").forEach(c => c.innerHTML = "");
+&nbsp;&nbsp;&nbsp;&nbsp;}
 
-    // Re-render all already-loaded tickers
-    for (const t of allTickers) {
-        if (quoteStore[t]) renderTicker(t);
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;// Re-render all already-loaded tickers
+&nbsp;&nbsp;&nbsp;&nbsp;for (const t of allTickers) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (quoteStore[t]) renderTicker(t);
+&nbsp;&nbsp;&nbsp;&nbsp;}
 }
 
 // Refresh age labels every 30s
 setInterval(() => {
-    masterList.forEach(t => {
-        const q = quoteStore[t], meta = tickerMeta[t];
-        if (!q||!meta) return;
-        const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-ticker="${t}"]`);
-        const age = row?.querySelector(".cell-age");
-        if (age) age.textContent = ageLabel(q.updatedAt);
-    });
+&nbsp;&nbsp;&nbsp;&nbsp;masterList.forEach(t => {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const q = quoteStore[t], meta = tickerMeta[t];
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (!q||!meta) return;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-ticker="${t}"]`);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const age = row?.querySelector(".cell-age");
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (age) age.textContent = ageLabel(q.updatedAt);
+&nbsp;&nbsp;&nbsp;&nbsp;});
 }, 30000);
 
 // ── Fetch ──
 async function fetchQuote(ticker) {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
-    for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-            const res = await fetch(url);
-            if (res.status === 429) {
-                setStatus("Rate limited — pausing 65s…", true);
-                await sleep(PAUSE_ON_429);
-                continue;
-            }
-            if (!res.ok) return;
-            const data = await res.json();
-            if (data && data.c != null && data.c !== 0) {
-                quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
-                renderTicker(ticker);
-            }
-            return;
-        } catch { await sleep(2000); }
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
+&nbsp;&nbsp;&nbsp;&nbsp;for (let attempt = 0; attempt < 5; attempt++) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;try {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const res = await fetch(url);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (res.status === 429) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;setStatus("Rate limited — pausing 65s…", true);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;await sleep(PAUSE_ON_429);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;continue;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (!res.ok) return;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const data = await res.json();
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;if (data && data.c != null && data.c !== 0) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;renderTicker(ticker);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;}
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;return;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;} catch { await sleep(2000); }
+&nbsp;&nbsp;&nbsp;&nbsp;}
 }
 
 async function rollingLoop() {
-    let idx = 0;
-    while (true) {
-        const t = masterList[idx];
-        setStatus(`Fetching ${t}…`);
-        setCounter(idx+1, masterList.length);
-        await fetchQuote(t);
-        await sleep(CALL_DELAY_MS);
-        idx = (idx+1) % masterList.length;
-    }
+&nbsp;&nbsp;&nbsp;&nbsp;let idx = 0;
+&nbsp;&nbsp;&nbsp;&nbsp;while (true) {
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;const t = masterList[idx];
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;setStatus(`Fetching ${t}…`);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;setCounter(idx+1, masterList.length);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;await fetchQuote(t);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;await sleep(CALL_DELAY_MS);
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;idx = (idx+1) % masterList.length;
+&nbsp;&nbsp;&nbsp;&nbsp;}
 }
 
 async function init() {
-    setStatus("Reading sheet…");
+&nbsp;&nbsp;&nbsp;&nbsp;setStatus("Reading sheet…");
 
-    // Build a single temp page so #pages has real height to measure
-    const tempPage = document.createElement("div");
-    tempPage.className = "page active";
-    tempPage.style.visibility = "hidden";
-    document.getElementById("pages").appendChild(tempPage);
+&nbsp;&nbsp;&nbsp;&nbsp;// Build a single temp page so #pages has real height to measure
+&nbsp;&nbsp;&nbsp;&nbsp;const tempPage = document.createElement("div");
+&nbsp;&nbsp;&nbsp;&nbsp;tempPage.className = "page active";
+&nbsp;&nbsp;&nbsp;&nbsp;tempPage.style.visibility = "hidden";
+&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("pages").appendChild(tempPage);
 
-    await buildMasterList();
+&nbsp;&nbsp;&nbsp;&nbsp;await buildMasterList();
 
-    // Remove temp page
-    document.getElementById("pages").removeChild(tempPage);
+&nbsp;&nbsp;&nbsp;&nbsp;// Remove temp page
+&nbsp;&nbsp;&nbsp;&nbsp;document.getElementById("pages").removeChild(tempPage);
 
-    buildChrome();
-    rollingLoop();
+&nbsp;&nbsp;&nbsp;&nbsp;buildChrome();
+&nbsp;&nbsp;&nbsp;&nbsp;rollingLoop();
 }
 
 init();
