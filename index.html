@@ -227,11 +227,15 @@ async function buildMasterList() {
         return true;
     });
 
-    // Calculate how many tickers fit per page/column
-    // col offsetHeight ≈ window.innerHeight - 142 (header+tabs+status)
-    // each row ≈ 20px, add buffer for group headers (24px effective)
-    const colH      = window.innerHeight - 142;
-    const rowsPerCol  = Math.floor(colH / 24);
+    // Measure actual available col height from a temporary test element
+    const testCol = document.createElement("div");
+    testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
+    document.getElementById("pages").appendChild(testCol);
+    const colH = testCol.offsetHeight;
+    document.getElementById("pages").removeChild(testCol);
+
+    // Each row is 20px, group headers ~14px, estimate 1 group per 10 tickers
+    const rowsPerCol     = Math.max(10, Math.floor(colH / 22));
     const tickersPerPage = rowsPerCol * NUM_COLS;
 
     // Assign each ticker to a page, column, and order
@@ -384,7 +388,18 @@ async function rollingLoop() {
 
 async function init() {
     setStatus("Reading sheet…");
+
+    // Build a single temp page so #pages has real height to measure
+    const tempPage = document.createElement("div");
+    tempPage.className = "page active";
+    tempPage.style.visibility = "hidden";
+    document.getElementById("pages").appendChild(tempPage);
+
     await buildMasterList();
+
+    // Remove temp page
+    document.getElementById("pages").removeChild(tempPage);
+
     buildChrome();
     rollingLoop();
 }
