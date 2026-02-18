@@ -238,7 +238,10 @@ async function buildMasterList() {
                 }
             });
         });
-        const rowsPerCol = Math.floor((window.innerHeight - 80) / 19);
+        // Each row is ~15px tall (measured from actual render)
+        // Group headers add ~14px each — approximate 1 per 8 tickers
+        const colH = window.innerHeight - 80;
+        const rowsPerCol = Math.floor(colH / 15);
         pageItems.forEach((item, idx) => {
             if (tickerMeta[item.ticker]) return;
             tickerMeta[item.ticker] = {
