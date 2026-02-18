@@ -238,9 +238,9 @@ async function buildMasterList() {
                 }
             });
         });
-        // At 13px font, each row is ~18px, group headers ~16px (1 per ~8 rows)
+        // Temporarily use a generous estimate; will be corrected after first render
         const colH = window.innerHeight - 80;
-        const rowsPerCol = Math.floor(colH / 18);
+        const rowsPerCol = Math.floor(colH / 22);
         pageItems.forEach((item, idx) => {
             if (tickerMeta[item.ticker]) return;
             tickerMeta[item.ticker] = {
