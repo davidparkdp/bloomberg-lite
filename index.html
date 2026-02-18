@@ -117,7 +117,7 @@ body {
 .cell-price { text-align: right; }
 .cell-chg   { text-align: right; }
 .cell-pct   { text-align: right; }
-.cell-age   { text-align: right; font-size: 9px; opacity: 0.35; }
+.cell-age   { text-align: right; font-size: 9px; color: #ffb300; opacity: 0.6; }
 
 .green { color: #00e676; }
 .red   { color: #ff5252; }
@@ -235,7 +235,7 @@ async function buildMasterList() {
     document.getElementById("pages").removeChild(testCol);
 
     // Each row is 20px, group headers ~14px, estimate 1 group per 10 tickers
-    const rowsPerCol     = Math.max(10, Math.floor(colH / 22));
+    const rowsPerCol     = Math.max(10, Math.floor(colH / 17));
     const tickersPerPage = rowsPerCol * NUM_COLS;
 
     // Assign each ticker to a page, column, and order
