@@ -2,122 +2,210 @@
 <html>
 <head>
 <title>Bloomberg Lite</title>
+
 <style>
 body {
     background-color: black;
-    color: white;
+    color: #d0d0d0;
     font-family: monospace;
     margin: 0;
-    padding: 10px;
+    padding: 8px;
 }
 
-.grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-}
-
-.tile {
-    border: 1px solid #333;
-    padding: 6px;
+.header {
+    color: #ff9900;
     font-size: 13px;
-    background-color: #111;
+    margin-bottom: 6px;
+}
+
+.topbar {
+    color: #ff9900;
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.group-header {
+    color: #ff9900;
+    margin-top: 8px;
+    margin-bottom: 2px;
+    font-size: 12px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 80px 100px 100px 100px;
+    padding: 2px 4px;
+    font-size: 12px;
+}
+
+.row:nth-child(even) {
+    background-color: #0a0a0a;
 }
 
 .green { color: #00ff00; }
 .red { color: #ff4d4d; }
 
-.header {
-    color: orange;
-    margin-bottom: 10px;
-}
-
 .footer {
-    color: gray;
-    margin-top: 10px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: #666;
 }
 </style>
 </head>
+
 <body>
 
 <div class="header">
-Bloomberg Lite | Page <span id="pageNumber">1</span>
+BLOOMBERG LITE | Page <span id="pageNumber">1</span>
 </div>
 
-<div class="grid" id="grid"></div>
+<div class="topbar" id="topBar"></div>
+
+<div id="content"></div>
 
 <div class="footer">
-← / → to change page
+← → change page
 </div>
 
 <script>
-const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?output=csv";
-const apiKey = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 
-let tickers = [];
+const sheetURL = "YOUR_GOOGLE_SHEET_CSV_LINK";
+const apiKey = "YOUR_FINNHUB_API_KEY";
+
+let dataRows = [];
 let currentPage = 0;
-const perPage = 90;
+const perPage = 60; // tighter layout now
 
-async function loadTickers() {
+let previousPrices = {};
+
+async function loadSheet() {
     const res = await fetch(sheetURL);
     const text = await res.text();
-    tickers = text.split("\n").map(t => t.trim()).filter(t => t !== "");
+
+    const lines = text.split("\n")
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+    dataRows = lines.map(line => {
+        const parts = line.split(",");
+        return {
+            group: parts[0],
+            ticker: parts[1]
+        };
+    });
+
     loadPage();
 }
 
 async function fetchQuote(symbol) {
-    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
+    const res = await fetch(
+        `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`
+    );
     return await res.json();
 }
 
 async function loadPage() {
-    const grid = document.getElementById("grid");
-    grid.innerHTML = "";
+
+    const content = document.getElementById("content");
+    content.innerHTML = "";
 
     const start = currentPage * perPage;
     const end = start + perPage;
-    const pageTickers = tickers.slice(start, end);
+    const pageRows = dataRows.slice(start, end);
 
     document.getElementById("pageNumber").innerText = currentPage + 1;
 
-    for (let symbol of pageTickers) {
-        const data = await fetchQuote(symbol);
+    const quotes = await Promise.all(
+        pageRows.map(r => fetchQuote(r.ticker))
+    );
 
-        const tile = document.createElement("div");
-        tile.className = "tile";
+    let currentGroup = "";
 
-        const changeClass = data.d >= 0 ? "green" : "red";
+    for (let i = 0; i < pageRows.length; i++) {
 
-        tile.innerHTML = `
-            <div><strong>${symbol}</strong></div>
-            <div>$${data.c.toFixed(2)}</div>
+        const { group, ticker } = pageRows[i];
+        const q = quotes[i];
+
+        if (!q || !q.c) continue;
+
+        if (group !== currentGroup) {
+            const gh = document.createElement("div");
+            gh.className = "group-header";
+            gh.innerText = group;
+            content.appendChild(gh);
+            currentGroup = group;
+        }
+
+        const row = document.createElement("div");
+        row.className = "row";
+
+        const changeClass = q.d >= 0 ? "green" : "red";
+
+        if (previousPrices[ticker] && previousPrices[ticker] !== q.c) {
+            row.style.backgroundColor =
+                q.c > previousPrices[ticker] ? "#002200" : "#220000";
+            setTimeout(() => {
+                row.style.backgroundColor = "";
+            }, 400);
+        }
+
+        previousPrices[ticker] = q.c;
+
+        row.innerHTML = `
+            <div>${ticker}</div>
+            <div>$${q.c.toFixed(2)}</div>
             <div class="${changeClass}">
-                ${data.d.toFixed(2)} (${data.dp.toFixed(2)}%)
+                ${q.d.toFixed(2)}
+            </div>
+            <div class="${changeClass}">
+                ${q.dp.toFixed(2)}%
             </div>
         `;
 
-        grid.appendChild(tile);
+        content.appendChild(row);
     }
 }
 
-document.addEventListener("keydown", function(e) {
-    if (e.key === "ArrowRight") {
-        if ((currentPage + 1) * perPage < tickers.length) {
-            currentPage++;
-            loadPage();
-        }
+async function loadTopBar() {
+
+    const symbols = ["SPY","QQQ","DIA","VIX"];
+    const quotes = await Promise.all(
+        symbols.map(s => fetchQuote(s))
+    );
+
+    let html = "";
+
+    for (let i = 0; i < symbols.length; i++) {
+        const q = quotes[i];
+        const color = q.d >= 0 ? "green" : "red";
+        html += `${symbols[i]} 
+            <span class="${color}">
+            ${q.c.toFixed(2)} (${q.dp.toFixed(2)}%)
+            </span> | `;
     }
-    if (e.key === "ArrowLeft") {
-        if (currentPage > 0) {
-            currentPage--;
-            loadPage();
-        }
+
+    document.getElementById("topBar").innerHTML = html;
+}
+
+document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" && (currentPage + 1) * perPage < dataRows.length) {
+        currentPage++;
+        loadPage();
+    }
+    if (e.key === "ArrowLeft" && currentPage > 0) {
+        currentPage--;
+        loadPage();
     }
 });
 
-setInterval(loadPage, 30000);
+setInterval(() => {
+    loadPage();
+    loadTopBar();
+}, 30000);
 
-loadTickers();
+loadSheet();
+loadTopBar();
+
 </script>
 
 </body>
