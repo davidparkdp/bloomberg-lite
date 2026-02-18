@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Bloomberg Lite</title>
+<style>
+body {
+    background-color: black;
+    color: white;
+    font-family: monospace;
+    margin: 0;
+    padding: 10px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.tile {
+    border: 1px solid #333;
+    padding: 6px;
+    font-size: 13px;
+    background-color: #111;
+}
+
+.green { color: #00ff00; }
+.red { color: #ff4d4d; }
+
+.header {
+    color: orange;
+    margin-bottom: 10px;
+}
+
+.footer {
+    color: gray;
+    margin-top: 10px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+Bloomberg Lite | Page <span id="pageNumber">1</span>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="footer">
+← / → to change page
+</div>
+
+<script>
+const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?output=csv";
+const apiKey = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+
+let tickers = [];
+let currentPage = 0;
+const perPage = 90;
+
+async function loadTickers() {
+    const res = await fetch(sheetURL);
+    const text = await res.text();
+    tickers = text.split("\n").map(t => t.trim()).filter(t => t !== "");
+    loadPage();
+}
+
+async function fetchQuote(symbol) {
+    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
+    return await res.json();
+}
+
+async function loadPage() {
+    const grid = document.getElementById("grid");
+    grid.innerHTML = "";
+
+    const start = currentPage * perPage;
+    const end = start + perPage;
+    const pageTickers = tickers.slice(start, end);
+
+    document.getElementById("pageNumber").innerText = currentPage + 1;
+
+    for (let symbol of pageTickers) {
+        const data = await fetchQuote(symbol);
+
+        const tile = document.createElement("div");
+        tile.className = "tile";
+
+        const changeClass = data.d >= 0 ? "green" : "red";
+
+        tile.innerHTML = `
+            <div><strong>${symbol}</strong></div>
+            <div>$${data.c.toFixed(2)}</div>
+            <div class="${changeClass}">
+                ${data.d.toFixed(2)} (${data.dp.toFixed(2)}%)
+            </div>
+        `;
+
+        grid.appendChild(tile);
+    }
+}
+
+document.addEventListener("keydown", function(e) {
+    if (e.key === "ArrowRight") {
+        if ((currentPage + 1) * perPage < tickers.length) {
+            currentPage++;
+            loadPage();
+        }
+    }
+    if (e.key === "ArrowLeft") {
+        if (currentPage > 0) {
+            currentPage--;
+            loadPage();
+        }
+    }
+});
+
+setInterval(loadPage, 30000);
+
+loadTickers();
+</script>
+
+</body>
+</html>
