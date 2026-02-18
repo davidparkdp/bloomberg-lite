@@ -1,213 +1,154 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <title>Bloomberg Lite</title>
 
 <style>
 body {
-    background-color: black;
-    color: #d0d0d0;
-    font-family: monospace;
     margin: 0;
-    padding: 8px;
-}
-
-.header {
-    color: #ff9900;
-    font-size: 13px;
-    margin-bottom: 6px;
+    background: black;
+    color: #00ffcc;
+    font-family: monospace;
 }
 
 .topbar {
-    color: #ff9900;
-    font-size: 12px;
-    margin-bottom: 6px;
+    background: black;
+    color: orange;
+    padding: 8px 15px;
+    font-weight: bold;
+    border-bottom: 1px solid orange;
 }
 
-.group-header {
-    color: #ff9900;
-    margin-top: 8px;
-    margin-bottom: 2px;
-    font-size: 12px;
+.nav {
+    padding: 8px 15px;
+    color: white;
+    cursor: pointer;
 }
 
-.row {
+.container {
+    padding: 10px;
+}
+
+.group-title {
+    color: orange;
+    margin-top: 20px;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.ticker-row {
     display: grid;
-    grid-template-columns: 80px 100px 100px 100px;
-    padding: 2px 4px;
-    font-size: 12px;
+    grid-template-columns: 120px 120px 120px 120px;
+    padding: 4px 0;
+    border-bottom: 1px solid #111;
 }
 
-.row:nth-child(even) {
-    background-color: #0a0a0a;
+.positive {
+    color: #00ff00;
 }
 
-.green { color: #00ff00; }
-.red { color: #ff4d4d; }
-
-.footer {
-    margin-top: 6px;
-    font-size: 11px;
-    color: #666;
+.negative {
+    color: #ff4444;
 }
 </style>
 </head>
 
 <body>
 
-<div class="header">
-BLOOMBERG LITE | Page <span id="pageNumber">1</span>
+<div class="topbar">
+BLOOMBERG LITE | Page <span id="page-number">1</span>
 </div>
 
-<div class="topbar" id="topBar"></div>
+<div class="nav" onclick="changePage(-1)">⬅ Prev</div>
+<div class="nav" onclick="changePage(1)">Next ➡</div>
 
-<div id="content"></div>
-
-<div class="footer">
-← → change page
-</div>
+<div class="container" id="ticker-container"></div>
 
 <script>
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?output=csv";
+const API_KEY = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 
-const sheetURL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pubhtml";
-const apiKey = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
-
-let dataRows = [];
-let currentPage = 0;
-const perPage = 60; // tighter layout now
-
-let previousPrices = {};
+let allTickers = [];
+let currentPage = 1;
 
 async function loadSheet() {
-    const res = await fetch(sheetURL);
+    const res = await fetch(SHEET_URL);
     const text = await res.text();
+    const rows = text.trim().split("\n").map(r => r.split(","));
 
-    const lines = text.split("\n")
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
-
-    dataRows = lines.map(line => {
-        const parts = line.split(",");
-        return {
-            group: parts[0],
-            ticker: parts[1]
-        };
-    });
+    allTickers = rows.map(row => ({
+        group: row[0]?.trim(),
+        ticker: row[1]?.trim(),
+        page: row[2]?.trim()
+    })).filter(r => r.ticker);
 
     loadPage();
 }
 
 async function fetchQuote(symbol) {
-    const res = await fetch(
-        `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`
-    );
-    return await res.json();
+    try {
+        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${API_KEY}`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
 }
 
 async function loadPage() {
+    const container = document.getElementById("ticker-container");
+    container.innerHTML = "";
+    document.getElementById("page-number").innerText = currentPage;
 
-    const content = document.getElementById("content");
-    content.innerHTML = "";
+    const pageTickers = allTickers.filter(t => t.page == currentPage);
 
-    const start = currentPage * perPage;
-    const end = start + perPage;
-    const pageRows = dataRows.slice(start, end);
+    const groups = [...new Set(pageTickers.map(t => t.group))];
 
-    document.getElementById("pageNumber").innerText = currentPage + 1;
+    for (let group of groups) {
 
-    const quotes = await Promise.all(
-        pageRows.map(r => fetchQuote(r.ticker))
-    );
+        const groupDiv = document.createElement("div");
+        groupDiv.className = "group-title";
+        groupDiv.innerText = group;
+        container.appendChild(groupDiv);
 
-    let currentGroup = "";
+        const tickersInGroup = pageTickers.filter(t => t.group === group);
 
-    for (let i = 0; i < pageRows.length; i++) {
+        for (let item of tickersInGroup) {
 
-        const { group, ticker } = pageRows[i];
-        const q = quotes[i];
+            const quote = await fetchQuote(item.ticker);
+            if (!quote || quote.c == null) continue;
 
-        if (!q || !q.c) continue;
+            const row = document.createElement("div");
+            row.className = "ticker-row";
 
-        if (group !== currentGroup) {
-            const gh = document.createElement("div");
-            gh.className = "group-header";
-            gh.innerText = group;
-            content.appendChild(gh);
-            currentGroup = group;
+            const changeClass = quote.d >= 0 ? "positive" : "negative";
+
+            row.innerHTML = `
+                <div>${item.ticker}</div>
+                <div>$${quote.c.toFixed(2)}</div>
+                <div class="${changeClass}">${quote.d.toFixed(2)}</div>
+                <div class="${changeClass}">${quote.dp.toFixed(2)}%</div>
+            `;
+
+            container.appendChild(row);
+
+            await new Promise(r => setTimeout(r, 300)); // rate limit protection
         }
-
-        const row = document.createElement("div");
-        row.className = "row";
-
-        const changeClass = q.d >= 0 ? "green" : "red";
-
-        if (previousPrices[ticker] && previousPrices[ticker] !== q.c) {
-            row.style.backgroundColor =
-                q.c > previousPrices[ticker] ? "#002200" : "#220000";
-            setTimeout(() => {
-                row.style.backgroundColor = "";
-            }, 400);
-        }
-
-        previousPrices[ticker] = q.c;
-
-        row.innerHTML = `
-            <div>${ticker}</div>
-            <div>$${q.c.toFixed(2)}</div>
-            <div class="${changeClass}">
-                ${q.d.toFixed(2)}
-            </div>
-            <div class="${changeClass}">
-                ${q.dp.toFixed(2)}%
-            </div>
-        `;
-
-        content.appendChild(row);
     }
 }
 
-async function loadTopBar() {
-
-    const symbols = ["SPY","QQQ","DIA","VIX"];
-    const quotes = await Promise.all(
-        symbols.map(s => fetchQuote(s))
-    );
-
-    let html = "";
-
-    for (let i = 0; i < symbols.length; i++) {
-        const q = quotes[i];
-        const color = q.d >= 0 ? "green" : "red";
-        html += `${symbols[i]} 
-            <span class="${color}">
-            ${q.c.toFixed(2)} (${q.dp.toFixed(2)}%)
-            </span> | `;
-    }
-
-    document.getElementById("topBar").innerHTML = html;
-}
-
-document.addEventListener("keydown", e => {
-    if (e.key === "ArrowRight" && (currentPage + 1) * perPage < dataRows.length) {
-        currentPage++;
-        loadPage();
-    }
-    if (e.key === "ArrowLeft" && currentPage > 0) {
-        currentPage--;
-        loadPage();
-    }
-});
-
-setInterval(() => {
+function changePage(direction) {
+    currentPage += direction;
+    if (currentPage < 1) currentPage = 1;
     loadPage();
-    loadTopBar();
-}, 30000);
+}
+
+// Refresh every 30 seconds
+setInterval(loadPage, 30000);
 
 loadSheet();
-loadTopBar();
-
 </script>
 
 </body>
 </html>
-
