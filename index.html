@@ -13,20 +13,17 @@ body {
     font-size: 13px;
 }
 
-/* ── Header ── */
 .header {
     display: flex;
     align-items: center;
-    gap: 20px;
     color: orange;
     padding: 8px 12px;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid #333;
     background: #111;
 }
 .header-title { font-size: 15px; font-weight: bold; letter-spacing: 2px; }
 .header-time  { color: #888; font-size: 12px; margin-left: auto; }
 
-/* ── Page tabs ── */
 .tabs {
     display: flex;
     gap: 2px;
@@ -35,7 +32,7 @@ body {
     border-bottom: 1px solid #333;
 }
 .tab {
-    padding: 4px 14px;
+    padding: 4px 16px;
     cursor: pointer;
     border: 1px solid #444;
     color: #888;
@@ -48,32 +45,36 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-/* ── Main layout: up to 3 column-panels side by side ── */
 .page {
     display: none;
     padding: 10px 12px;
+    gap: 0;
 }
-.page.active { display: flex; gap: 24px; align-items: flex-start; }
+.page.active { display: flex; align-items: flex-start; }
 
-/* Each "panel" is one A/B/C or E/F/G set */
-.panel { flex: 1; min-width: 0; }
+.panel {
+    flex: 1;
+    min-width: 0;
+    padding: 0 14px;
+    border-right: 1px solid #222;
+}
+.panel:first-child { padding-left: 0; }
+.panel:last-child  { border-right: none; }
 
-/* ── Group label ── */
 .group {
     color: orange;
-    margin-top: 18px;
+    margin-top: 16px;
     margin-bottom: 2px;
     font-size: 11px;
     letter-spacing: 1px;
-    border-bottom: 1px solid #2a2a2a;
+    border-bottom: 1px solid #222;
     padding-bottom: 3px;
 }
-.group:first-child { margin-top: 6px; }
+.group:first-child { margin-top: 4px; }
 
-/* ── Ticker row ── */
 .row {
     display: grid;
-    grid-template-columns: 110px 90px 75px 75px;
+    grid-template-columns: 90px 80px 70px 70px;
     padding: 3px 0;
     border-bottom: 1px solid #111;
 }
@@ -82,43 +83,27 @@ body {
 .green { color: #00e676; }
 .red   { color: #ff5252; }
 
-/* ── Blink overlay for refresh ── */
 @keyframes blink-flash {
     0%   { opacity: 1; }
-    40%  { opacity: 0; }
+    40%  { opacity: 0.15; }
     100% { opacity: 1; }
 }
-.blink { animation: blink-flash .35s ease-out; }
+.blink { animation: blink-flash .4s ease-out; }
 
-/* ── Loading spinner shown only on first load ── */
-.spinner {
-    color: #444;
-    padding: 40px 20px;
-    letter-spacing: 2px;
-    font-size: 12px;
-}
+.spinner { color: #444; padding: 40px 20px; letter-spacing: 2px; font-size: 12px; }
 
-/* ── Divider between panels ── */
-.panel-divider {
-    width: 1px;
-    background: #2a2a2a;
-    align-self: stretch;
-    margin-top: 6px;
-}
-
-/* ── Status bar ── */
 .statusbar {
     position: fixed;
     bottom: 0; left: 0; right: 0;
     background: #111;
-    border-top: 1px solid #333;
+    border-top: 1px solid #222;
     padding: 3px 12px;
     font-size: 11px;
     color: #555;
     display: flex;
     gap: 20px;
 }
-.statusbar span { color: #888; }
+.statusbar span { color: #777; }
 </style>
 </head>
 <body>
@@ -140,42 +125,24 @@ body {
 // ─────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────
-const API_KEY   = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+const API_KEY    = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const REFRESH_MS = 30000;
 
-// Each entry = one Google Sheet published as CSV.
-// Add more sheets here as needed (page 3, 4, …)
 const SHEETS = [
-    {
-        label: "PAGE 1",
-        url:   "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?output=csv&gid=0"
-    },
-    // Example page 2 – replace gid with your actual sheet id
-    // { label: "PAGE 2", url: "https://docs.google.com/…/pub?output=csv&gid=XXXXXXX" },
+    { label: "PAGE 1", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv" },
+    { label: "PAGE 2", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=1898380729&single=true&output=csv" },
+    { label: "PAGE 3", url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=710341566&single=true&output=csv" },
 ];
 
-// Column mapping:
-//  Each "panel" is defined by [groupCol, tickerCol, nameCol] (0-indexed)
-//  Panel 1 = cols A(0), B(1), C(2)   → name col is B or you can use C for a label
-//  Panel 2 = cols E(4), F(5), G(6)
-//  Panel 3 = cols I(8), J(9), K(10)  ← add a third panel set in your sheet if desired
-//
-// Column layout expected per panel:
-//   groupCol  = category/group name  (e.g. "US EQUITIES")
-//   tickerCol = Finnhub symbol        (e.g. "AAPL" or "0700.HK")
-//   pageCol   = which page (optional, not used here since we use separate sheets)
-const PANEL_COLS = [
-    { group: 0, ticker: 1 },   // Panel 1: cols A, B
-    { group: 4, ticker: 5 },   // Panel 2: cols E, F
-    // { group: 8, ticker: 9 },// Panel 3: cols I, J  ← uncomment if you add a 3rd panel
+// Your sheet layout per row:
+//   Col A (0) = group,  Col B (1) = ticker  → left panel
+//   Col C (2) = group,  Col D (3) = ticker  → middle panel
+//   Col E (4) = group,  Col F (5) = ticker  → right panel
+const PANELS = [
+    { groupCol: 0, tickerCol: 1 },
+    { groupCol: 2, tickerCol: 3 },
+    { groupCol: 4, tickerCol: 5 },
 ];
-
-// ─────────────────────────────────────────────────────────
-// STATE
-// ─────────────────────────────────────────────────────────
-let currentPage = 0;
-let sheetData   = [];   // parsed rows per sheet index
-let initialized = false;
 
 // ─────────────────────────────────────────────────────────
 // CLOCK
@@ -190,23 +157,19 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ─────────────────────────────────────────────────────────
-// BUILD TABS & PAGE CONTAINERS
+// BUILD TABS + PAGE WRAPPERS
 // ─────────────────────────────────────────────────────────
 function buildChrome() {
     const tabsEl  = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
-    tabsEl.innerHTML = "";
-    pagesEl.innerHTML = "";
 
     SHEETS.forEach((sheet, i) => {
-        // tab
         const tab = document.createElement("button");
         tab.className = "tab" + (i === 0 ? " active" : "");
         tab.textContent = sheet.label;
         tab.onclick = () => switchPage(i);
         tabsEl.appendChild(tab);
 
-        // page container
         const page = document.createElement("div");
         page.className = "page" + (i === 0 ? " active" : "");
         page.id = `page-${i}`;
@@ -216,27 +179,22 @@ function buildChrome() {
 }
 
 function switchPage(idx) {
-    currentPage = idx;
     document.querySelectorAll(".tab").forEach((t, i)  => t.classList.toggle("active", i === idx));
     document.querySelectorAll(".page").forEach((p, i) => p.classList.toggle("active", i === idx));
 }
 
 // ─────────────────────────────────────────────────────────
-// LOAD CSV
+// FETCH HELPERS
 // ─────────────────────────────────────────────────────────
-async function loadSheet(idx) {
-    const res  = await fetch(SHEETS[idx].url);
+async function loadCSV(url) {
+    const res  = await fetch(url);
     const text = await res.text();
-    // parse CSV – simple split (handles quotes loosely)
     return text.trim().split("\n").map(r => r.split(",").map(c => c.trim()));
 }
 
-// ─────────────────────────────────────────────────────────
-// FETCH QUOTE
-// ─────────────────────────────────────────────────────────
 async function fetchQuote(symbol) {
     try {
-        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`);
+        const res  = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${API_KEY}`);
         if (!res.ok) return null;
         const data = await res.json();
         return (data && data.c != null && data.c !== 0) ? data : null;
@@ -244,26 +202,22 @@ async function fetchQuote(symbol) {
 }
 
 // ─────────────────────────────────────────────────────────
-// BUILD A PANEL (one column set)
+// BUILD ONE PANEL
 // ─────────────────────────────────────────────────────────
-async function buildPanel(rows, colCfg, delay) {
-    // Gather unique tickers from this panel
-    const items = [];
-    for (const row of rows) {
-        const group  = row[colCfg.group];
-        const ticker = row[colCfg.ticker];
-        if (ticker && group) items.push({ group, ticker });
-    }
+async function buildPanel(rows, groupCol, tickerCol, delayOffset) {
+    const items = rows
+        .map(r => ({ group: r[groupCol] || "", ticker: r[tickerCol] || "" }))
+        .filter(r => r.ticker && r.group);
+
     if (!items.length) return null;
 
-    // Fetch all quotes (with small delay to respect rate limit)
+    // Fetch all quotes first, then render — no trickle-in effect
     const quotes = [];
     for (let i = 0; i < items.length; i++) {
-        await new Promise(r => setTimeout(r, delay + i * 320));
+        await new Promise(r => setTimeout(r, delayOffset + i * 350));
         quotes.push(await fetchQuote(items[i].ticker));
     }
 
-    // Build DOM
     const panel = document.createElement("div");
     panel.className = "panel";
 
@@ -280,8 +234,9 @@ async function buildPanel(rows, colCfg, delay) {
             panel.appendChild(g);
         }
 
-        const color = q.d >= 0 ? "green" : "red";
-        const sign  = q.d >= 0 ? "+" : "";
+        const up    = q.d >= 0;
+        const color = up ? "green" : "red";
+        const sign  = up ? "+" : "";
         const row   = document.createElement("div");
         row.className = "row";
         row.innerHTML = `
@@ -297,54 +252,45 @@ async function buildPanel(rows, colCfg, delay) {
 }
 
 // ─────────────────────────────────────────────────────────
-// REFRESH ONE PAGE  (fetch in background → swap atomically)
+// REFRESH ONE PAGE — fetch everything, then swap all at once
 // ─────────────────────────────────────────────────────────
+let initialized = false;
+
 async function refreshPage(idx) {
     setStatus(`Fetching page ${idx + 1}…`);
-    const rows = await loadSheet(idx);
+    const rows = await loadCSV(SHEETS[idx].url);
 
-    // Build all panels in parallel but stagger API calls so they don't overlap
-    const panelPromises = PANEL_COLS.map((colCfg, pi) =>
-        buildPanel(rows, colCfg, pi * 320 * rows.length / PANEL_COLS.length)
+    // Stagger each panel's API calls so they don't all fire at once
+    const avgRows    = Math.ceil(rows.length / PANELS.length);
+    const panelNodes = await Promise.all(
+        PANELS.map((p, pi) =>
+            buildPanel(rows, p.groupCol, p.tickerCol, pi * avgRows * 350)
+        )
     );
-    const panels = await Promise.all(panelPromises);
 
-    // Assemble new page content
-    const wrapper = document.createDocumentFragment();
-    let hasContent = false;
-    panels.forEach((panel, pi) => {
-        if (!panel) return;
-        if (hasContent) {
-            const div = document.createElement("div");
-            div.className = "panel-divider";
-            wrapper.appendChild(div);
-        }
-        wrapper.appendChild(panel);
-        hasContent = true;
-    });
+    const frag = document.createDocumentFragment();
+    panelNodes.forEach(node => { if (node) frag.appendChild(node); });
 
-    // Atomic swap with a blink on subsequent loads
     const pageEl = document.getElementById(`page-${idx}`);
     if (initialized) {
         pageEl.classList.add("blink");
         pageEl.addEventListener("animationend", () => pageEl.classList.remove("blink"), { once: true });
     }
     pageEl.innerHTML = "";
-    pageEl.appendChild(wrapper);
-
-    setStatus(`OK — ${rows.length} rows`);
-    document.getElementById("last-update").textContent =
-        "Updated " + new Date().toLocaleTimeString("en-US", { hour12: false });
+    pageEl.appendChild(frag);
 }
 
 // ─────────────────────────────────────────────────────────
-// FULL REFRESH (all pages)
+// REFRESH ALL PAGES
 // ─────────────────────────────────────────────────────────
 async function refreshAll() {
     for (let i = 0; i < SHEETS.length; i++) {
         await refreshPage(i);
     }
     initialized = true;
+    setStatus("OK");
+    document.getElementById("last-update").textContent =
+        "Updated " + new Date().toLocaleTimeString("en-US", { hour12: false });
 }
 
 function setStatus(msg) {
