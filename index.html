@@ -50,8 +50,8 @@ body {
     display: none;
     padding: 4px 6px;
     gap: 0;
-    height: calc(100vh - 52px - 20px);
     overflow: hidden;
+    /* height set dynamically by JS */
 }
 .page.active { display: flex; align-items: flex-start; }
 
@@ -453,10 +453,27 @@ async function rollingLoop() {
 }
 
 // ─────────────────────────────────────────────────────────
+// FIT PAGE HEIGHT — measure actual header/tabs/statusbar
+// ─────────────────────────────────────────────────────────
+function fitHeight() {
+    const header    = document.querySelector(".header");
+    const tabs      = document.querySelector(".tabs");
+    const statusbar = document.querySelector(".statusbar");
+    const used = (header?.offsetHeight || 0)
+               + (tabs?.offsetHeight   || 0)
+               + (statusbar?.offsetHeight || 0);
+    const h = `${window.innerHeight - used}px`;
+    document.querySelectorAll(".page").forEach(p => p.style.height = h);
+    document.querySelectorAll(".col").forEach(c => c.style.height  = h);
+}
+window.addEventListener("resize", fitHeight);
+
+// ─────────────────────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────────────────────
 async function init() {
     buildChrome();
+    fitHeight();
     setStatus("Reading sheets…");
     await buildMasterList();
     rollingLoop();
