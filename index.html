@@ -382,10 +382,33 @@ async function rollingLoop() {
     }
 }
 
+function setPageHeight() {
+    const header = document.querySelector(".header").offsetHeight;
+    const tabs   = document.querySelector(".tabs").offsetHeight;
+    const status = document.querySelector(".statusbar").offsetHeight;
+    const h = window.innerHeight - header - tabs - status;
+    document.querySelectorAll(".page").forEach(p => {
+        p.style.height    = h + "px";
+        p.style.maxHeight = h + "px";
+        p.style.overflow  = "hidden";
+    });
+    document.querySelectorAll(".col").forEach(c => {
+        c.style.height    = h + "px";
+        c.style.maxHeight = h + "px";
+        c.style.overflowY = "auto";
+    });
+}
+
+window.addEventListener("resize", setPageHeight);
+
 async function init() {
     buildChrome();
+    // Run after paint so offsetHeight values are accurate
+    requestAnimationFrame(() => requestAnimationFrame(setPageHeight));
     setStatus("Reading sheets…");
     await buildMasterList();
+    // Run again after cols are populated
+    setPageHeight();
     rollingLoop();
 }
 
