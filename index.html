@@ -68,7 +68,7 @@ body {
 .page.active {
     display: flex;
     flex-wrap: wrap;
-    align-content: flex-start;
+    align-items: stretch;          /* makes columns same height */
     gap: 6px;
 }
 
@@ -76,22 +76,32 @@ body {
     flex: 1 1 240px;
     min-width: 240px;
     max-width: 340px;
+    display: flex;                  /* flex container */
+    flex-direction: column;         /* stack groups + rows vertically */
     overflow: hidden;
     padding: 0 4px;
     border-right: 1px solid #1a1a1a;
 }
 .col:last-child { border-right: none; }
 
+/* This pushes content to top and fills remaining space at bottom */
+.col::after {
+    content: "";
+    flex-grow: 1;                   /* fills empty space → aligns bottoms */
+    min-height: 0;
+}
+
 .group {
     color: orange;
-    margin: 8px 0 2px 0;
-    font-size: 10.5px;
-    letter-spacing: 0.8px;
+    margin: 6px 0 2px 0;
+    font-size: 10px;
+    letter-spacing: 0.7px;
     border-bottom: 1px solid #222;
     padding-bottom: 1px;
     text-transform: uppercase;
+    line-height: 1.1;
 }
-.group:first-of-type { margin-top: 4px; }
+.group:first-of-type { margin-top: 3px; }
 
 .row {
     display: grid;
@@ -135,19 +145,19 @@ body {
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 
-/* Tighter layout for smaller screens / windows */
+/* Tighter on smaller screens */
 @media (max-height: 820px) {
     .row { font-size: 11.4px; min-height: 15px; }
     .cell-name { font-size: 10px; }
     .cell-age { font-size: 8.5px; }
-    .group { font-size: 9.8px; margin: 6px 0 1px; }
+    .group { font-size: 9.5px; margin: 5px 0 1px; }
 }
 
 @media (max-height: 680px) {
     .row { font-size: 10.8px; min-height: 14px; grid-template-columns: 42px 80px 58px 52px 50px 20px; }
     .cell-name { font-size: 9.5px; }
     .cell-age { font-size: 8px; }
-    .group { font-size: 9.2px; margin: 4px 0 0; }
+    .group { font-size: 9px; margin: 4px 0 0; }
 }
 </style>
 </head>
@@ -244,9 +254,8 @@ async function buildMasterList() {
         return true;
     });
 
-    // Simple round-robin distribution — CSS will handle fitting
     unique.forEach((item, idx) => {
-        const pageIdx = Math.floor(idx / (35 * NUM_COLS)); // rough safe starting point
+        const pageIdx = Math.floor(idx / (35 * NUM_COLS));
         const pos = idx % (35 * NUM_COLS);
         const colIdx = pos % NUM_COLS;
         tickerMeta[item.ticker] = { group:item.group, name:item.name, pageIdx, colIdx, order:idx };
