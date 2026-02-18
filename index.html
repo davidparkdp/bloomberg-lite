@@ -12,144 +12,109 @@ body {
     font-family: monospace;
 }
 
-.topbar {
-    background: black;
+.header {
     color: orange;
-    padding: 8px 15px;
-    font-weight: bold;
+    padding: 10px;
     border-bottom: 1px solid orange;
-}
-
-.nav {
-    padding: 8px 15px;
-    color: white;
-    cursor: pointer;
 }
 
 .container {
     padding: 10px;
 }
 
-.group-title {
+.group {
     color: orange;
     margin-top: 20px;
-    margin-bottom: 5px;
-    font-weight: bold;
 }
 
-.ticker-row {
+.row {
     display: grid;
     grid-template-columns: 120px 120px 120px 120px;
     padding: 4px 0;
-    border-bottom: 1px solid #111;
 }
 
-.positive {
-    color: #00ff00;
-}
-
-.negative {
-    color: #ff4444;
-}
+.green { color: #00ff00; }
+.red { color: #ff4444; }
 </style>
 </head>
 
 <body>
 
-<div class="topbar">
-BLOOMBERG LITE | Page <span id="page-number">1</span>
+<div class="header">
+BLOOMBERG LITE
 </div>
 
-<div class="nav" onclick="changePage(-1)">⬅ Prev</div>
-<div class="nav" onclick="changePage(1)">Next ➡</div>
-
-<div class="container" id="ticker-container"></div>
+<div class="container" id="container"></div>
 
 <script>
+
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?output=csv";
 const API_KEY = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 
-let allTickers = [];
-let currentPage = 1;
+let tickers = [];
 
 async function loadSheet() {
     const res = await fetch(SHEET_URL);
     const text = await res.text();
     const rows = text.trim().split("\n").map(r => r.split(","));
 
-    allTickers = rows.map(row => ({
-        group: row[0]?.trim(),
-        ticker: row[1]?.trim(),
-        page: row[2]?.trim()
-    })).filter(r => r.ticker);
+    tickers = rows.map(r => ({
+        group: r[0]?.trim(),
+        ticker: r[1]?.trim(),
+        page: r[2]?.trim()
+    })).filter(r => r.ticker && r.page == "1");
 
-    loadPage();
+    loadQuotes();
 }
 
 async function fetchQuote(symbol) {
-    try {
-        const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${API_KEY}`);
-        if (!res.ok) return null;
-        return await res.json();
-    } catch {
-        return null;
-    }
+    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${API_KEY}`);
+    if (!res.ok) return null;
+    return await res.json();
 }
 
-async function loadPage() {
-    const container = document.getElementById("ticker-container");
+async function loadQuotes() {
+    const container = document.getElementById("container");
     container.innerHTML = "";
-    document.getElementById("page-number").innerText = currentPage;
 
-    const pageTickers = allTickers.filter(t => t.page == currentPage);
-
-    const groups = [...new Set(pageTickers.map(t => t.group))];
+    const groups = [...new Set(tickers.map(t => t.group))];
 
     for (let group of groups) {
-
         const groupDiv = document.createElement("div");
-        groupDiv.className = "group-title";
+        groupDiv.className = "group";
         groupDiv.innerText = group;
         container.appendChild(groupDiv);
 
-        const tickersInGroup = pageTickers.filter(t => t.group === group);
+        const groupTickers = tickers.filter(t => t.group === group);
 
-        for (let item of tickersInGroup) {
-
+        for (let item of groupTickers) {
             const quote = await fetchQuote(item.ticker);
             if (!quote || quote.c == null) continue;
 
             const row = document.createElement("div");
-            row.className = "ticker-row";
+            row.className = "row";
 
-            const changeClass = quote.d >= 0 ? "positive" : "negative";
+            const color = quote.d >= 0 ? "green" : "red";
 
             row.innerHTML = `
                 <div>${item.ticker}</div>
                 <div>$${quote.c.toFixed(2)}</div>
-                <div class="${changeClass}">${quote.d.toFixed(2)}</div>
-                <div class="${changeClass}">${quote.dp.toFixed(2)}%</div>
+                <div class="${color}">${quote.d.toFixed(2)}</div>
+                <div class="${color}">${quote.dp.toFixed(2)}%</div>
             `;
 
             container.appendChild(row);
 
-            await new Promise(r => setTimeout(r, 300)); // rate limit protection
+            await new Promise(r => setTimeout(r, 350));
         }
     }
 }
 
-function changePage(direction) {
-    currentPage += direction;
-    if (currentPage < 1) currentPage = 1;
-    loadPage();
-}
-
-// Refresh every 30 seconds
-setInterval(loadPage, 30000);
+setInterval(loadQuotes, 30000);
 
 loadSheet();
+
 </script>
 
 </body>
 </html>
-
