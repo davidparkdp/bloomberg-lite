@@ -205,12 +205,7 @@ async function loadUniqueItems() {
             if (group && ticker) allItems.push({ group, ticker, name });
         });
     }
-    const seen = new Set();
-    return allItems.filter(item => {
-        if (seen.has(item.ticker)) return false;
-        seen.add(item.ticker);
-        return true;
-    });
+    return allItems;
 }
 
 /*
@@ -295,10 +290,12 @@ function doLayout(unique) {
         for (let c = 0; c < NUM_COLS; c++) {
             for (const slot of layoutColumns[p][c]) {
                 if (slot.type === "data") {
+                    const idx = masterList.length;
                     masterList.push(slot.ticker);
-                    tickerMeta[slot.ticker] = {
+                    tickerMeta[idx] = {
                         group: slot.group,
                         name: slot.name,
+                        ticker: slot.ticker,
                         pageIdx: p,
                         colIdx: c
                     };
@@ -335,6 +332,7 @@ function buildChrome() {
 }
 
 function renderAllSlots(layoutColumns) {
+    let slotIdx = 0;
     for (let p = 0; p < layoutColumns.length; p++) {
         for (let c = 0; c < layoutColumns[p].length; c++) {
             const colEl = document.getElementById(`col-${p}-${c}`);
@@ -349,7 +347,7 @@ function renderAllSlots(layoutColumns) {
                         `<div></div><div></div><div></div><div></div>`;
                 } else if (slot.type === "data") {
                     el.classList.add("slot-data", "skeleton");
-                    el.dataset.ticker = slot.ticker;
+                    el.dataset.slotId = slotIdx;
                     el.innerHTML =
                         `<div class="cell-ticker">${slot.ticker}</div>` +
                         `<div class="cell-name" title="${slot.name}">${slot.name}</div>` +
@@ -357,6 +355,7 @@ function renderAllSlots(layoutColumns) {
                         `<div class="cell-chg"></div>` +
                         `<div class="cell-pct"></div>` +
                         `<div class="cell-age"></div>`;
+                    slotIdx++;
                 } else {
                     el.classList.add("slot-empty");
                 }
@@ -366,12 +365,15 @@ function renderAllSlots(layoutColumns) {
     }
 }
 
-function renderTicker(ticker) {
-    const q = quoteStore[ticker], meta = tickerMeta[ticker];
-    if (!q || !meta) return;
+function renderTicker(idx) {
+    const meta = tickerMeta[idx];
+    if (!meta) return;
+    const ticker = meta.ticker;
+    const q = quoteStore[ticker];
+    if (!q) return;
     const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
     if (!colEl) return;
-    const rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
+    const rowEl = colEl.querySelector(`[data-slot-id="${idx}"]`);
     if (!rowEl) return;
     const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
     rowEl.className = "slot slot-data " + color;
@@ -410,13 +412,14 @@ document.addEventListener("dblclick", e => {
 });
 
 setInterval(() => {
-    masterList.forEach(t => {
-        const q = quoteStore[t], meta = tickerMeta[t];
-        if (!q || !meta) return;
-        const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-ticker="${t}"]`);
+    for (let i = 0; i < masterList.length; i++) {
+        const meta = tickerMeta[i];
+        const q = quoteStore[masterList[i]];
+        if (!q || !meta) continue;
+        const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-slot-id="${i}"]`);
         const age = row?.querySelector(".cell-age");
         if (age) age.textContent = ageLabel(q.updatedAt);
-    });
+    }
 }, 30000);
 
 async function fetchQuote(ticker) {
@@ -429,7 +432,10 @@ async function fetchQuote(ticker) {
             const data = await res.json();
             if (data && data.c != null && data.c !== 0) {
                 quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
-                renderTicker(ticker);
+                // Update all slots that show this ticker
+                for (let i = 0; i < masterList.length; i++) {
+                    if (masterList[i] === ticker) renderTicker(i);
+                }
             }
             return;
         } catch { await sleep(2000); }
@@ -437,14 +443,20 @@ async function fetchQuote(ticker) {
 }
 
 async function rollingLoop() {
+    // Build a deduplicated fetch list (unique tickers only, in order of first appearance)
+    const fetchList = [];
+    const seen = new Set();
+    for (const t of masterList) {
+        if (!seen.has(t)) { seen.add(t); fetchList.push(t); }
+    }
     let idx = 0;
     while (true) {
-        const t = masterList[idx];
+        const t = fetchList[idx];
         setStatus(`Fetching ${t}…`);
-        setCounter(idx+1, masterList.length);
+        setCounter(idx+1, fetchList.length);
         await fetchQuote(t);
         await sleep(CALL_DELAY_MS);
-        idx = (idx+1) % masterList.length;
+        idx = (idx+1) % fetchList.length;
     }
 }
 
@@ -452,8 +464,8 @@ function fullRebuild(unique) {
     const layoutColumns = doLayout(unique);
     buildChrome();
     renderAllSlots(layoutColumns);
-    for (const t of masterList) {
-        if (quoteStore[t]) renderTicker(t);
+    for (let i = 0; i < masterList.length; i++) {
+        if (quoteStore[masterList[i]]) renderTicker(i);
     }
 }
 
