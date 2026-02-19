@@ -89,7 +89,7 @@ body {
 }
 /* Group heading: grey, same font size as tickers */
 .slot-heading {
-    color: #bbb;
+    color: #ddd;
     font-size: 13px;
     font-family: monospace;
     letter-spacing: 1px;
@@ -244,12 +244,6 @@ function packIntoColumns(slots) {
             columns.push(col);
             col = [];
             continue; // re-process current slot in new column
-        }
-
-        // Row 0: must be heading or empty spacer
-        if (posInCol === 0 && slots[si].type === "data") {
-            col.push({ type: "empty" });
-            continue; // re-process current slot at position 1
         }
 
         // Don't orphan a heading as the last row of a column
