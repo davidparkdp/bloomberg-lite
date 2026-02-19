@@ -3,40 +3,120 @@
 <head>
     <meta charset="UTF-8">
     <title>Bloomberg Lite</title>
+    <link rel="icon" href="data:,">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { height: 100%; background: #0a0a0a; color: #00ffcc; font-family: monospace; font-size: 13px; overflow: hidden; }
-        .header { flex-shrink: 0; display: flex; align-items: center; color: orange; padding: 6px 12px; border-bottom: 1px solid #333; background: #111; }
+        html { height: 100%; }
+        body {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: #0a0a0a;
+            color: #00ffcc;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .header {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            color: orange;
+            padding: 6px 12px;
+            border-bottom: 1px solid #333;
+            background: #111;
+        }
         .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
         .header-time  { color: #888; font-size: 11px; margin-left: auto; }
-        .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 4px 12px; background: #111; border-bottom: 1px solid #333; overflow-x: auto; white-space: nowrap; }
-        .tab { flex-shrink: 0; padding: 3px 14px; cursor: pointer; border: 1px solid #444; color: #888; background: transparent; font-family: monospace; font-size: 11px; }
+        .tabs {
+            flex-shrink: 0;
+            display: flex;
+            gap: 2px;
+            padding: 4px 12px;
+            background: #111;
+            border-bottom: 1px solid #333;
+        }
+        .tab {
+            padding: 3px 14px;
+            cursor: pointer;
+            border: 1px solid #444;
+            color: #888;
+            background: transparent;
+            font-family: monospace;
+            font-size: 11px;
+            letter-spacing: 1px;
+            transition: all .15s;
+        }
         .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
-        
-        #pages { flex: 1; position: relative; height: 100%; }
-        .page { display: none; position: absolute; inset: 0; padding: 0 6px; flex-direction: row; }
+        .tab:hover:not(.active) { color: #ccc; border-color: #666; }
+        #pages {
+            flex: 1 1 0;
+            min-height: 0;
+            position: relative;
+        }
+        .page {
+            display: none;
+            position: absolute;
+            inset: 0;
+            padding: 4px 6px;
+        }
         .page.active { display: flex; }
-        .col { flex: 1; border-right: 1px solid #1a1a1a; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
-        .col:last-child { border-right: none; }
-        
-        /* Fixed Header Logic */
-        .group { color: orange; height: 36px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; white-space: nowrap; overflow: hidden; flex-shrink: 0; }
-        
-        /* WIDER NAME COLUMN: Reset to 100px for better legibility */
-        .row { display: grid; grid-template-columns: 50px 100px 60px 52px 52px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 4px; flex-shrink: 0; }
+        .col {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            padding: 0 3px;
+            border-right: 1px solid #1a1a1a;
+        }
+        .col:first-child { padding-left: 0; }
+        .col:last-child  { border-right: none; padding-right: 0; }
+        .statusbar {
+            flex-shrink: 0;
+            background: #111;
+            border-top: 1px solid #222;
+            padding: 2px 12px;
+            font-size: 10px;
+            color: #555;
+            display: flex;
+            gap: 16px;
+        }
+        .statusbar span { color: #555; }
+        .status-warn { color: #ffaa00 !important; }
+        .group {
+            color: orange;
+            margin-top: 12px;
+            margin-bottom: 1px;
+            font-size: 11px;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #1e1e1e;
+            padding-bottom: 2px;
+            text-transform: uppercase;
+        }
+        .group:first-child { margin-top: 2px; }
+        .row {
+            display: grid;
+            grid-template-columns: 48px 82px 66px 58px 56px 20px;
+            padding: 2px 0;
+            border-bottom: 1px solid #0f0f0f;
+            align-items: center;
+            gap: 1px;
+        }
         .row:hover { background: #141414; }
-        
-        .cell-ticker a { font-weight: bold; color: #ffb300; text-decoration: none; }
-        .cell-name { color: #ffb300; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
-        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; font-size: 11px; }
-        .cell-age { font-size: 9px; color: #ffb300; opacity: 0.5; }
+        .cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
+        .cell-name {
+            text-align: left; color: #ffb300; font-size: 11px;
+            padding-right: 3px; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+            cursor: default; opacity: 0.85;
+        }
+        .cell-price { text-align: right; }
+        .cell-chg   { text-align: right; }
+        .cell-pct   { text-align: right; }
+        .cell-age   { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
         .green { color: #00e676; }
-        .red { color: #ff5252; }
-        .statusbar { flex-shrink: 0; background: #111; border-top: 1px solid #222; padding: 2px 12px; font-size: 10px; color: #555; display: flex; gap: 16px; height: 22px; align-items: center; }
+        .red   { color: #ff5252; }
     </style>
 </head>
-<body style="display: flex; flex-direction: column;">
-
+<body>
 <div class="header">
     <div class="header-title">◆ BLOOMBERG LITE</div>
     <div class="header-time" id="clock"></div>
@@ -44,190 +124,251 @@
 <div class="tabs" id="tabs"></div>
 <div id="pages"></div>
 <div class="statusbar">
-    <span id="status">CONNECTING...</span>
+    <span id="status">Loading…</span>
     <span id="counter"></span>
 </div>
 
 <script>
-const API_KEY = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
-const CALL_DELAY = 1200;
-const NUM_COLS = 5;
-const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
+const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+const CALL_DELAY_MS = 1200;
+const PAUSE_ON_429  = 3000; 
+const NUM_COLS      = 5;
+const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
+// ── CSV parser ──
+function parseCSV(text) {
+    return text.trim().split("\n").map(line => {
+        const fields = [];
+        let cur = "", inQ = false;
+        for (const ch of line) {
+            if (ch === '"') inQ = !inQ;
+            else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
+            else cur += ch;
+        }
+        fields.push(cur.trim());
+        return fields;
+    });
+}
+
+async function loadCSV(url) {
+    const r = await fetch(url);
+    const text = await r.text();
+    return parseCSV(text);
+}
+
+// ── State ──
+const quoteStore = {};
+const tickerMeta = {};
 let masterList = [];
-let quoteStore = {};
 let numPages = 0;
 
-function parseCSVLine(line) {
-    const result = [];
-    let cur = "", inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') inQuotes = !inQuotes;
-        else if (char === ',' && !inQuotes) { result.push(cur.trim()); cur = ""; }
-        else cur += char;
-    }
-    result.push(cur.trim());
-    return result;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function setStatus(msg, warn=false) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = warn ? "status-warn" : "";
+}
+
+function setCounter(i, n) {
+    document.getElementById("counter").textContent = `${i} / ${n}`;
 }
 
 function updateClock() {
     const now = new Date();
-    document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
+    document.getElementById("clock").textContent =
+        now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})
+        + "  " + now.toLocaleTimeString("en-US",{hour12:false});
 }
 setInterval(updateClock, 1000);
+updateClock();
 
-async function init() {
-    try {
-        const resp = await fetch(SHEET_URL);
-        const text = await resp.text();
-        const lines = text.trim().split(/\r?\n/);
-        const rows = lines.map(line => parseCSVLine(line));
-        
-        const rawData = [];
-        const maxColsAvailable = Math.max(...rows.map(r => r.length));
-        
-        // Step 1: Flatten all CSV data into a continuous list of items
-        for (let b = 0; b < maxColsAvailable; b += 3) {
-            let currentBucket = "";
-            rows.forEach(row => {
-                const colA = (row[b] || "");
-                const colB = (row[b+1] || "");
-                const colC = (row[b+2] || "");
-                if (colA && !colB) currentBucket = colA; 
-                else if (colB && colB.toLowerCase() !== "ticker" && colB.length < 12 && !colB.includes(" ")) {
-                    if (colA) currentBucket = colA;
-                    rawData.push({ group: currentBucket || "VARIOUS", ticker: colB.toUpperCase(), name: colC });
-                }
-            });
-        }
-
-        // Step 2: Build UI with repeated headers
-        const pEl = document.getElementById("pages");
-        const availH = pEl.offsetHeight || 800;
-        const ROW_H = 21;
-        const HDR_H = 36;
-        
-        let curP = 0, curC = 0, usedH = 0, lastG = "";
-        let pageData = [[[]]]; // Structure: [Page][Column][Items]
-
-        rawData.forEach(item => {
-            const isNewG = item.group !== lastG;
-            let needed = ROW_H;
-            if (isNewG || usedH === 0) needed += HDR_H;
-
-            // If it doesn't fit, move to next column
-            if (usedH + needed > availH) {
-                curC++;
-                if (curC >= NUM_COLS) { curP++; curC = 0; }
-                usedH = 0;
-                if (!pageData[curP]) pageData[curP] = [];
-                if (!pageData[curP][curC]) pageData[curP][curC] = [];
-                
-                // Force header because it's the start of a column
-                pageData[curP][curC].push({ type: 'HDR', val: item.group });
-                usedH += HDR_H;
-            } else if (isNewG) {
-                pageData[curP][curC].push({ type: 'HDR', val: item.group });
-                usedH += HDR_H;
-            }
-
-            pageData[curP][curC].push({ type: 'ROW', ...item });
-            usedH += ROW_H;
-            lastG = item.group;
-            if (!masterList.includes(item.ticker)) masterList.push(item.ticker);
-        });
-
-        numPages = pageData.length;
-        renderUI(pageData);
-        rollingLoop();
-    } catch (err) { console.error(err); }
+function ageLabel(ts) {
+    if (!ts) return "";
+    const s = Math.floor((Date.now()-ts)/1000);
+    if (s < 60)   return s+"s";
+    if (s < 3600) return Math.floor(s/60)+"m";
+    return Math.floor(s/3600)+"h";
 }
 
-function renderUI(pageData) {
-    const tEl = document.getElementById("tabs"), pEl = document.getElementById("pages");
-    tEl.innerHTML = ""; pEl.innerHTML = "";
-    
-    pageData.forEach((page, pIdx) => {
-        const btn = document.createElement("button");
-        btn.className = "tab" + (pIdx===0?" active":"");
-        btn.textContent = `PAGE ${pIdx+1}`;
-        btn.onclick = () => {
-            document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
-            btn.classList.add("active");
-            document.getElementById(`page-${pIdx}`).classList.add("active");
-        };
-        tEl.appendChild(btn);
+async function buildMasterList() {
+    masterList = [];
+    const rows = await loadCSV(SHEET_URL);
+    const maxCols = Math.max(...rows.map(r => r.length));
 
-        const pg = document.createElement("div");
-        pg.className = "page" + (pIdx===0?" active":"");
-        pg.id = `page-${pIdx}`;
-        
-        for (let cIdx = 0; cIdx < NUM_COLS; cIdx++) {
+    const allItems = [];
+    for (let base = 0; base + 1 < maxCols; base += 3) {
+        rows.forEach(row => {
+            const group  = row[base] || "";
+            const ticker = row[base + 1] || "";
+            const name   = row[base + 2] || "";
+            if (group && ticker) allItems.push({ group, ticker, name });
+        });
+    }
+
+    const seen = new Set();
+    const unique = allItems.filter(item => {
+        if (seen.has(item.ticker)) return false;
+        seen.add(item.ticker);
+        return true;
+    });
+
+    // Determine layout
+    const testCol = document.createElement("div");
+    testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
+    document.getElementById("pages").appendChild(testCol);
+    const colH = testCol.offsetHeight || 600; 
+    document.getElementById("pages").removeChild(testCol);
+
+    const rowsPerCol = Math.max(10, Math.floor(colH / 21));
+    const tickersPerPage = rowsPerCol * NUM_COLS;
+
+    unique.forEach((item, idx) => {
+        const pageIdx = Math.floor(idx / tickersPerPage);
+        const posInPage = idx % tickersPerPage;
+        const colIdx = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
+        tickerMeta[item.ticker] = { group: item.group, name: item.name, pageIdx, colIdx, order: posInPage };
+        masterList.push(item.ticker);
+    });
+
+    numPages = Math.ceil(unique.length / tickersPerPage) || 1;
+}
+
+function buildChrome() {
+    const tabsEl = document.getElementById("tabs");
+    const pagesEl = document.getElementById("pages");
+    tabsEl.innerHTML = "";
+    pagesEl.innerHTML = "";
+
+    for (let i = 0; i < numPages; i++) {
+        const tab = document.createElement("button");
+        tab.className = "tab" + (i===0?" active":"");
+        tab.textContent = `PAGE ${i+1}`;
+        tab.onclick = () => switchPage(i);
+        tabsEl.appendChild(tab);
+
+        const page = document.createElement("div");
+        page.className = "page" + (i===0?" active":"");
+        page.id = `page-${i}`;
+        for (let c = 0; c < NUM_COLS; c++) {
             const col = document.createElement("div");
             col.className = "col";
-            const items = page[cIdx] || [];
-            items.forEach(item => {
-                if (item.type === 'HDR') {
-                    const h = document.createElement("div");
-                    h.className = "group"; h.textContent = item.val;
-                    col.appendChild(h);
-                } else {
-                    const r = document.createElement("div");
-                    const safeId = item.ticker.replace(/[^a-zA-Z0-9]/g, '-');
-                    r.className = "row"; r.id = `row-${safeId}`;
-                    r.innerHTML = `
-                        <div class="cell-ticker"><a href="https://finance.yahoo.com/quote/${item.ticker}" target="_blank">${item.ticker}</a></div>
-                        <div class="cell-name">${item.name}</div>
-                        <div class="cell-price">...</div>
-                        <div class="cell-chg">...</div>
-                        <div class="cell-pct">...</div>
-                        <div class="cell-age" id="age-${safeId}"></div>`;
-                    col.appendChild(r);
-                }
-            });
-            pg.appendChild(col);
+            col.id = `col-${i}-${c}`;
+            page.appendChild(col);
         }
-        pEl.appendChild(pg);
-    });
-}
-
-async function rollingLoop() {
-    let i = 0;
-    while(true) {
-        const t = masterList[i];
-        const safeId = t.replace(/[^a-zA-Z0-9]/g, '-');
-        document.getElementById("status").textContent = `FETCH: ${t}`;
-        document.getElementById("counter").textContent = `${i+1}/${masterList.length}`;
-        try {
-            const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${t}&token=${API_KEY}`);
-            const d = await r.json();
-            if (d.c && d.c !== 0) {
-                const up = d.d >= 0;
-                quoteStore[t] = { ts: Date.now() };
-                const row = document.getElementById(`row-${safeId}`);
-                if (row) {
-                    row.className = `row ${up?'green':'red'}`;
-                    row.querySelector(".cell-price").textContent = d.c.toFixed(2);
-                    row.querySelector(".cell-chg").textContent = (up?'+':'')+d.d.toFixed(2);
-                    row.querySelector(".cell-pct").textContent = (up?'+':'')+d.dp.toFixed(2)+'%';
-                    row.querySelector(".cell-age").textContent = "0s";
-                }
-            }
-        } catch(e) {}
-        await new Promise(ok => setTimeout(ok, CALL_DELAY));
-        i = (i + 1) % masterList.length;
+        pagesEl.appendChild(page);
     }
 }
 
+// ── OPTIMIZED: Render placeholders instantly ──
+function renderAllPlaceholders() {
+    masterList.forEach(ticker => {
+        const meta = tickerMeta[ticker];
+        const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
+        if (!colEl) return;
+
+        const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
+        let g = document.getElementById(gid);
+        if (!g) {
+            g = document.createElement("div");
+            g.className = "group"; g.id = gid;
+            g.textContent = meta.group;
+            colEl.appendChild(g); 
+        }
+
+        const rowEl = document.createElement("div");
+        rowEl.dataset.ticker = ticker;
+        rowEl.className = `row`;
+        rowEl.innerHTML = `
+            <div class="cell-ticker">${ticker}</div>
+            <div class="cell-name" title="${meta.name}">${meta.name}</div>
+            <div class="cell-price">...</div>
+            <div class="cell-chg">...</div>
+            <div class="cell-pct">...</div>
+            <div class="cell-age"></div>
+        `;
+        colEl.appendChild(rowEl);
+    });
+}
+
+function switchPage(idx) {
+    document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
+    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+}
+
+function renderTicker(ticker) {
+    const q = quoteStore[ticker], meta = tickerMeta[ticker];
+    if (!q || !meta) return;
+    const rowEl = document.querySelector(`[data-ticker="${ticker}"]`);
+    if (!rowEl) return;
+
+    const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
+    rowEl.className = `row ${color}`;
+    rowEl.innerHTML = `
+        <div class="cell-ticker">${ticker}</div>
+        <div class="cell-name" title="${meta.name}">${meta.name}</div>
+        <div class="cell-price">${q.c.toFixed(2)}</div>
+        <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
+        <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
+        <div class="cell-age">${ageLabel(q.updatedAt)}</div>
+    `;
+}
+
+async function fetchQuote(ticker) {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
+    try {
+        const res = await fetch(url);
+        if (res.status === 429) {
+            setStatus("Rate limited — pausing...", true);
+            await sleep(PAUSE_ON_429);
+            return;
+        }
+        const data = await res.json();
+        if (data && data.c) {
+            quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
+            renderTicker(ticker);
+        }
+    } catch (e) { console.error(e); }
+}
+
+async function rollingLoop() {
+    let idx = 0;
+    while (true) {
+        if (masterList.length === 0) { await sleep(1000); continue; }
+        const t = masterList[idx];
+        setStatus(`Fetching ${t}...`);
+        setCounter(idx+1, masterList.length);
+        await fetchQuote(t);
+        await sleep(CALL_DELAY_MS);
+        idx = (idx+1) % masterList.length;
+    }
+}
+
+async function init() {
+    setStatus("Reading sheet...");
+    await buildMasterList();
+    
+    buildChrome();
+    renderAllPlaceholders();
+    
+    // Pause briefly to let the browser paint the placeholders
+    await sleep(50); 
+    
+    setStatus("Ready.");
+    rollingLoop();
+}
+
 document.addEventListener("keydown", e => {
-    const tabs = document.querySelectorAll(".tab");
-    let cur = [...tabs].findIndex(t => t.classList.contains("active"));
-    if (e.key === "ArrowRight") { cur = (cur + 1) % numPages; tabs[cur].click(); }
-    if (e.key === "ArrowLeft") { cur = (cur - 1 + numPages) % numPages; tabs[cur].click(); }
+    if (e.key==="ArrowRight"||e.key==="ArrowLeft") {
+        const tabs = document.querySelectorAll(".tab");
+        let cur = [...tabs].findIndex(t=>t.classList.contains("active"));
+        cur = e.key==="ArrowRight" ? (cur+1)%numPages : (cur-1+numPages)%numPages;
+        switchPage(cur);
+    }
 });
 
 init();
 </script>
 </body>
 </html>
+
