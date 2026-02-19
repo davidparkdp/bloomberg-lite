@@ -19,15 +19,15 @@
         .col { flex: 1; border-right: 1px solid #1a1a1a; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
         .col:last-child { border-right: none; }
         
-        /* Group headers: Reduced height slightly for better fit */
-        .group { color: orange; height: 38px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; white-space: nowrap; overflow: hidden; }
+        /* Fixed Header Logic */
+        .group { color: orange; height: 36px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; white-space: nowrap; overflow: hidden; flex-shrink: 0; }
         
-        /* SHORTER NAME COLUMN: Adjusted grid from 105px down to 85px */
-        .row { display: grid; grid-template-columns: 48px 85px 60px 52px 52px 25px; height: 22px; line-height: 22px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 4px; }
+        /* WIDER NAME COLUMN: Reset to 100px for better legibility */
+        .row { display: grid; grid-template-columns: 50px 100px 60px 52px 52px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 4px; flex-shrink: 0; }
         .row:hover { background: #141414; }
         
         .cell-ticker a { font-weight: bold; color: #ffb300; text-decoration: none; }
-        .cell-name { color: #ffb300; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.8; }
+        .cell-name { color: #ffb300; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
         .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; font-size: 11px; }
         .cell-age { font-size: 9px; color: #ffb300; opacity: 0.5; }
         .green { color: #00e676; }
@@ -55,7 +55,6 @@ const NUM_COLS = 5;
 const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
 let masterList = [];
-let tickerMeta = {};
 let quoteStore = {};
 let numPages = 0;
 
@@ -85,105 +84,111 @@ async function init() {
         const lines = text.trim().split(/\r?\n/);
         const rows = lines.map(line => parseCSVLine(line));
         
-        const allItems = [];
+        const rawData = [];
         const maxColsAvailable = Math.max(...rows.map(r => r.length));
         
+        // Step 1: Flatten all CSV data into a continuous list of items
         for (let b = 0; b < maxColsAvailable; b += 3) {
-            let activeGroup = "";
+            let currentBucket = "";
             rows.forEach(row => {
                 const colA = (row[b] || "");
                 const colB = (row[b+1] || "");
                 const colC = (row[b+2] || "");
-                if (colA && !colB) activeGroup = colA; 
+                if (colA && !colB) currentBucket = colA; 
                 else if (colB && colB.toLowerCase() !== "ticker" && colB.length < 12 && !colB.includes(" ")) {
-                    if (colA) activeGroup = colA;
-                    allItems.push({ group: activeGroup || "VARIOUS", ticker: colB.toUpperCase(), name: colC });
+                    if (colA) currentBucket = colA;
+                    rawData.push({ group: currentBucket || "VARIOUS", ticker: colB.toUpperCase(), name: colC });
                 }
             });
         }
 
-        const pagesContainer = document.getElementById("pages");
-        const colH = pagesContainer.offsetHeight || 800;
-        const slotsPerCol = Math.floor((colH - 22) / 22); 
-
-        let curP = 0, curC = 0, curS = 0, lastG = "";
+        // Step 2: Build UI with repeated headers
+        const pEl = document.getElementById("pages");
+        const availH = pEl.offsetHeight || 800;
+        const ROW_H = 21;
+        const HDR_H = 36;
         
-        // UI DATA BUILDING
-        allItems.forEach(item => {
-            const isNewG = item.group !== lastG;
-            const cost = isNewG ? 2 : 1;
+        let curP = 0, curC = 0, usedH = 0, lastG = "";
+        let pageData = [[[]]]; // Structure: [Page][Column][Items]
 
-            if (curS + cost > slotsPerCol || (isNewG && curS > 0)) {
+        rawData.forEach(item => {
+            const isNewG = item.group !== lastG;
+            let needed = ROW_H;
+            if (isNewG || usedH === 0) needed += HDR_H;
+
+            // If it doesn't fit, move to next column
+            if (usedH + needed > availH) {
                 curC++;
                 if (curC >= NUM_COLS) { curP++; curC = 0; }
-                curS = 0;
-                tickerMeta[item.ticker] = { ...item, pIdx: curP, cIdx: curC, forceHeader: true };
-                curS = 2;
-            } else {
-                tickerMeta[item.ticker] = { ...item, pIdx: curP, cIdx: curC, forceHeader: isNewG };
-                curS += cost;
+                usedH = 0;
+                if (!pageData[curP]) pageData[curP] = [];
+                if (!pageData[curP][curC]) pageData[curP][curC] = [];
+                
+                // Force header because it's the start of a column
+                pageData[curP][curC].push({ type: 'HDR', val: item.group });
+                usedH += HDR_H;
+            } else if (isNewG) {
+                pageData[curP][curC].push({ type: 'HDR', val: item.group });
+                usedH += HDR_H;
             }
-            if (!masterList.includes(item.ticker)) masterList.push(item.ticker);
+
+            pageData[curP][curC].push({ type: 'ROW', ...item });
+            usedH += ROW_H;
             lastG = item.group;
+            if (!masterList.includes(item.ticker)) masterList.push(item.ticker);
         });
 
-        numPages = curP + 1;
-        renderUI();
+        numPages = pageData.length;
+        renderUI(pageData);
         rollingLoop();
-    } catch (err) { document.getElementById("status").textContent = "CSV ERROR"; }
+    } catch (err) { console.error(err); }
 }
 
-function renderUI() {
+function renderUI(pageData) {
     const tEl = document.getElementById("tabs"), pEl = document.getElementById("pages");
     tEl.innerHTML = ""; pEl.innerHTML = "";
     
-    for (let i = 0; i < numPages; i++) {
+    pageData.forEach((page, pIdx) => {
         const btn = document.createElement("button");
-        btn.className = "tab" + (i===0?" active":"");
-        btn.textContent = `PAGE ${i+1}`;
+        btn.className = "tab" + (pIdx===0?" active":"");
+        btn.textContent = `PAGE ${pIdx+1}`;
         btn.onclick = () => {
             document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
             btn.classList.add("active");
-            document.getElementById(`page-${i}`).classList.add("active");
+            document.getElementById(`page-${pIdx}`).classList.add("active");
         };
         tEl.appendChild(btn);
 
         const pg = document.createElement("div");
-        pg.className = "page" + (i===0?" active":"");
-        pg.id = `page-${i}`;
-        for (let c = 0; c < NUM_COLS; c++) {
+        pg.className = "page" + (pIdx===0?" active":"");
+        pg.id = `page-${pIdx}`;
+        
+        for (let cIdx = 0; cIdx < NUM_COLS; cIdx++) {
             const col = document.createElement("div");
             col.className = "col";
-            col.id = `col-${i}-${c}`;
+            const items = page[cIdx] || [];
+            items.forEach(item => {
+                if (item.type === 'HDR') {
+                    const h = document.createElement("div");
+                    h.className = "group"; h.textContent = item.val;
+                    col.appendChild(h);
+                } else {
+                    const r = document.createElement("div");
+                    const safeId = item.ticker.replace(/[^a-zA-Z0-9]/g, '-');
+                    r.className = "row"; r.id = `row-${safeId}`;
+                    r.innerHTML = `
+                        <div class="cell-ticker"><a href="https://finance.yahoo.com/quote/${item.ticker}" target="_blank">${item.ticker}</a></div>
+                        <div class="cell-name">${item.name}</div>
+                        <div class="cell-price">...</div>
+                        <div class="cell-chg">...</div>
+                        <div class="cell-pct">...</div>
+                        <div class="cell-age" id="age-${safeId}"></div>`;
+                    col.appendChild(r);
+                }
+            });
             pg.appendChild(col);
         }
         pEl.appendChild(pg);
-    }
-
-    masterList.forEach(t => {
-        const m = tickerMeta[t];
-        const col = document.getElementById(`col-${m.pIdx}-${m.cIdx}`);
-        if (!col) return;
-        
-        // ALWAYS add a header if it's the start of a column OR a new group
-        if (m.forceHeader || col.children.length === 0) {
-            const g = document.createElement("div");
-            g.className = "group"; 
-            g.textContent = m.group;
-            col.appendChild(g);
-        }
-        
-        const r = document.createElement("div");
-        const safeId = t.replace(/[^a-zA-Z0-9]/g, '-');
-        r.className = "row"; r.id = `row-${safeId}`;
-        r.innerHTML = `
-            <div class="cell-ticker"><a href="https://finance.yahoo.com/quote/${t}" target="_blank">${t}</a></div>
-            <div class="cell-name">${m.name}</div>
-            <div class="cell-price">...</div>
-            <div class="cell-chg">...</div>
-            <div class="cell-pct">...</div>
-            <div class="cell-age" id="age-${safeId}"></div>`;
-        col.appendChild(r);
     });
 }
 
