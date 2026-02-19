@@ -65,8 +65,6 @@ body {
     overflow: hidden;
     padding: 0 3px;
     border-right: 1px solid #1a1a1a;
-    display: flex;
-    flex-direction: column;
 }
 .col:first-child { padding-left: 0; }
 .col:last-child  { border-right: none; padding-right: 0; }
@@ -83,18 +81,7 @@ body {
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 
-/* Group label: appears as a small tag above the first row of a new group.
-   Only shown on first-ever occurrence of the group. Uses minimal vertical space. */
-.group-label {
-    color: orange;
-    font-size: 10px;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 0 0 0 0;
-    line-height: 13px;
-    flex-shrink: 0;
-}
-
+/* ── Row ── */
 .row {
     display: grid;
     grid-template-columns: 48px 82px 66px 58px 56px 20px;
@@ -102,14 +89,34 @@ body {
     border-bottom: 1px solid #0f0f0f;
     align-items: center;
     gap: 1px;
-    flex-shrink: 0;
 }
 .row:hover { background: #141414; }
-/* Row with a group label gets a top accent */
-.row.group-start {
-    border-top: 1px solid #2a2200;
-    margin-top: 1px;
+
+/* Group label — rendered via CSS ::before on the row itself.
+   Uses position:absolute so it takes ZERO flow height.
+   Only set on first-ever occurrence of each group globally. */
+.row[data-group-label] {
+    position: relative;
+    margin-top: 14px;
 }
+/* If it's the first child in the column, no extra top margin needed beyond a small one */
+.col > .row:first-child[data-group-label] {
+    margin-top: 11px;
+}
+/* The actual label */
+.row[data-group-label]::before {
+    content: attr(data-group-label);
+    position: absolute;
+    top: -13px;
+    left: 0;
+    color: orange;
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
 .cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
 .cell-name   {
     text-align: left; color: #ffb300; font-size: 11px;
@@ -123,13 +130,11 @@ body {
 .cell-age   { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
 .green { color: #00e676; }
 .red   { color: #ff5252; }
-.dim   { color: #555; }
-.spinner { color: #333; padding: 20px 6px; letter-spacing: 2px; font-size: 11px; }
 
-/* Pending price placeholders */
-.cell-price.pending, .cell-chg.pending, .cell-pct.pending {
-    color: #333;
-}
+/* Skeleton state: ticker/name visible, prices dimmed */
+.row.skeleton .cell-price,
+.row.skeleton .cell-chg,
+.row.skeleton .cell-pct { color: #222; }
 </style>
 </head>
 <body>
@@ -150,7 +155,6 @@ const PAUSE_ON_429  = 4000;
 const NUM_COLS      = 5;
 const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
-// ── CSV parser ──
 function parseCSV(text) {
     return text.trim().split("\n").map(line => {
         const fields = [];
@@ -164,271 +168,192 @@ function parseCSV(text) {
         return fields;
     });
 }
-
-async function loadCSV(url) {
-    const r = await fetch(url);
-    return parseCSV(await r.text());
-}
-
-// ── State ──
-const quoteStore = {};   // ticker → { c, d, dp, updatedAt }
-const tickerMeta = {};   // ticker → { group, name, pageIdx, colIdx, order, isGroupStart }
-let   masterList = [];
-let   numPages   = 0;
-const shownGroups = new Set(); // track which groups have had their label shown
+async function loadCSV(url) { return parseCSV(await (await fetch(url)).text()); }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 function setStatus(msg, warn=false) {
     const el = document.getElementById("status");
     el.textContent = msg;
     el.className = warn ? "status-warn" : "";
 }
-function setCounter(i, n) {
-    document.getElementById("counter").textContent = `${i} / ${n}`;
-}
+function setCounter(i, n) { document.getElementById("counter").textContent = `${i} / ${n}`; }
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent =
         now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})
         + "  " + now.toLocaleTimeString("en-US",{hour12:false});
 }
-setInterval(updateClock, 1000);
-updateClock();
+setInterval(updateClock, 1000); updateClock();
 
 function ageLabel(ts) {
     if (!ts) return "";
     const s = Math.floor((Date.now()-ts)/1000);
-    if (s < 60)   return s+"s";
+    if (s < 60) return s+"s";
     if (s < 3600) return Math.floor(s/60)+"m";
     return Math.floor(s/3600)+"h";
 }
 
-// ── Build master list from single sheet ──
+/* ── state ── */
+const quoteStore = {};
+const tickerMeta = {};
+let masterList = [];
+let numPages = 0;
+let rowsPerCol = 0;
+
+/* ── build master list ── */
 async function buildMasterList() {
     masterList = [];
     const rows = await loadCSV(SHEET_URL);
     const maxCols = Math.max(...rows.map(r => r.length));
-
     const allItems = [];
     for (let base = 0; base + 1 < maxCols; base += 3) {
-        const groupCol  = base;
-        const tickerCol = base + 1;
-        const nameCol   = base + 2;
         rows.forEach(row => {
-            const group  = row[groupCol]  || "";
-            const ticker = row[tickerCol] || "";
-            const name   = row[nameCol]   || "";
+            const group  = row[base]   || "";
+            const ticker = row[base+1] || "";
+            const name   = row[base+2] || "";
             if (group && ticker) allItems.push({ group, ticker, name });
         });
     }
-
     const seen = new Set();
-    const unique = allItems.filter(item => {
+    return allItems.filter(item => {
         if (seen.has(item.ticker)) return false;
         seen.add(item.ticker);
         return true;
     });
+}
 
-    // Measure available column height
-    const testCol = document.createElement("div");
-    testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
-    document.getElementById("pages").appendChild(testCol);
-    const colH = testCol.offsetHeight;
-    document.getElementById("pages").removeChild(testCol);
-
-    // Each data row is ~21px. Group labels are ~14px.
-    // To keep columns perfectly aligned, we compute how many ROWS fit,
-    // and group labels consume a row-slot worth of space.
-    const ROW_H = 21;
-    const GROUP_LABEL_H = 14; // small label above first item of new group
-    const SEPARATOR_H = 2;    // margin for group-start border
-
-    // We need to figure out how many items fit per column, accounting for
-    // group labels. Since group labels only appear on first occurrence,
-    // we do a greedy packing approach.
-    const rowsPerCol = Math.max(10, Math.floor(colH / ROW_H));
-    
-    // We'll do a layout pass: pack items into columns, each column has
-    // `rowsPerCol` row-slots. A group label (first occurrence only) costs
-    // ~0.7 of a row slot in visual space, but for alignment we'll use a
-    // different approach: fixed row count per column, group labels are
-    // overlaid / squeezed in without reducing row count.
-    
-    // SIMPLE APPROACH for perfect alignment:
-    // Every column gets exactly `rowsPerCol` tickers.
-    // Group labels are tiny decorations that don't consume a full row slot.
-    const tickersPerCol = rowsPerCol;
-    const tickersPerPage = tickersPerCol * NUM_COLS;
-
-    // Track which group was last assigned per column to know when a new group starts
-    let lastGroupInCol = {};
-    // Track first-ever group occurrence globally
-    const firstGroupOccurrence = new Set();
-
+function assignLayout(unique) {
+    masterList = [];
+    const groupFirstSeen = new Set();
     unique.forEach((item, idx) => {
-        const pageIdx = Math.floor(idx / tickersPerPage);
-        const posInPage = idx % tickersPerPage;
-        const colIdx  = Math.min(Math.floor(posInPage / tickersPerCol), NUM_COLS - 1);
-        const colKey = `${pageIdx}-${colIdx}`;
-        
-        // Is this the first item of a new group within this column?
-        const isNewGroupInCol = (lastGroupInCol[colKey] !== item.group);
-        lastGroupInCol[colKey] = item.group;
-        
-        // Is this the very first time this group appears anywhere?
-        const isFirstGroupEver = !firstGroupOccurrence.has(item.group);
-        if (isNewGroupInCol) firstGroupOccurrence.add(item.group);
-
+        const pageIdx   = Math.floor(idx / (rowsPerCol * NUM_COLS));
+        const posInPage = idx % (rowsPerCol * NUM_COLS);
+        const colIdx    = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
+        const isFirstEver = !groupFirstSeen.has(item.group);
+        if (isFirstEver) groupFirstSeen.add(item.group);
         tickerMeta[item.ticker] = {
-            group:   item.group,
-            name:    item.name,
-            pageIdx,
-            colIdx,
-            order:   posInPage,
-            isGroupStart: isNewGroupInCol,      // new group starts in this column
-            showGroupLabel: isFirstGroupEver     // only label on first-ever occurrence
+            group: item.group, name: item.name,
+            pageIdx, colIdx, order: posInPage,
+            showLabel: isFirstEver
         };
         masterList.push(item.ticker);
     });
-
-    numPages = Math.ceil(unique.length / tickersPerPage) || 1;
+    numPages = Math.ceil(unique.length / (rowsPerCol * NUM_COLS)) || 1;
 }
 
+/* ── chrome ── */
 function buildChrome() {
-    const tabsEl  = document.getElementById("tabs");
+    const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
+    tabsEl.innerHTML = ""; pagesEl.innerHTML = "";
     for (let i = 0; i < numPages; i++) {
         const tab = document.createElement("button");
         tab.className = "tab" + (i===0?" active":"");
         tab.textContent = `PAGE ${i+1}`;
         tab.onclick = () => switchPage(i);
         tabsEl.appendChild(tab);
-
         const page = document.createElement("div");
         page.className = "page" + (i===0?" active":"");
         page.id = `page-${i}`;
         for (let c = 0; c < NUM_COLS; c++) {
             const col = document.createElement("div");
-            col.className = "col";
-            col.id = `col-${i}-${c}`;
+            col.className = "col"; col.id = `col-${i}-${c}`;
             page.appendChild(col);
         }
         pagesEl.appendChild(page);
     }
 }
 
-// ── Render all tickers immediately with placeholder prices ──
-function renderAllTickersImmediate() {
+/* ── FIX #1: show all tickers + names immediately ── */
+function renderAllSkeletons() {
     for (const ticker of masterList) {
         const meta = tickerMeta[ticker];
         if (!meta) continue;
         const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
         if (!colEl) continue;
-
-        // Add group label if this is the first-ever occurrence
-        if (meta.showGroupLabel) {
-            const label = document.createElement("div");
-            label.className = "group-label";
-            label.textContent = meta.group;
-            colEl.appendChild(label);
-        }
-
         const rowEl = document.createElement("div");
-        rowEl.className = "row dim";
+        rowEl.className = "row skeleton";
         rowEl.dataset.ticker = ticker;
-        rowEl.dataset.order = meta.order;
-        if (meta.isGroupStart && !meta.showGroupLabel) {
-            // Group continues from previous column - add subtle separator
-            rowEl.classList.add("group-start");
-        }
-        rowEl.innerHTML = `
-            <div class="cell-ticker">${ticker}</div>
-            <div class="cell-name" title="${meta.name}">${meta.name}</div>
-            <div class="cell-price pending">—</div>
-            <div class="cell-chg pending"></div>
-            <div class="cell-pct pending"></div>
-            <div class="cell-age"></div>
-        `;
+        /* FIX #2 + #3: group label only on first-ever occurrence,
+           rendered via CSS ::before (absolute positioned, no flow impact) */
+        if (meta.showLabel) rowEl.dataset.groupLabel = meta.group;
+        rowEl.innerHTML =
+            `<div class="cell-ticker">${ticker}</div>` +
+            `<div class="cell-name" title="${meta.name}">${meta.name}</div>` +
+            `<div class="cell-price">—</div>` +
+            `<div class="cell-chg"></div>` +
+            `<div class="cell-pct"></div>` +
+            `<div class="cell-age"></div>`;
         colEl.appendChild(rowEl);
     }
 }
 
-function switchPage(idx) {
-    document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
-    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
-}
-
-document.addEventListener("keydown", e => {
-    if (e.key==="ArrowRight"||e.key==="ArrowLeft") {
-        const tabs = document.querySelectorAll(".tab");
-        let cur = [...tabs].findIndex(t=>t.classList.contains("active"));
-        cur = e.key==="ArrowRight" ? (cur+1)%numPages : (cur-1+numPages)%numPages;
-        switchPage(cur);
-    }
-});
-
-// ── Double-click ticker to open Yahoo Finance ──
-document.addEventListener("dblclick", (e) => {
-    const cell = e.target.closest(".cell-ticker");
-    const ticker = cell?.textContent?.trim();
-    if (ticker) {
-        const cleanTicker = encodeURIComponent(ticker.toUpperCase());
-        const url = `https://finance.yahoo.com/quote/${cleanTicker}/`;
-        window.open(url, "_blank", "noopener,noreferrer");
-    }
-});
-
-// ── Update a single ticker's price data in-place ──
+/* ── update single row when price arrives ── */
 function renderTicker(ticker) {
     const q = quoteStore[ticker], meta = tickerMeta[ticker];
     if (!q || !meta) return;
     const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
     if (!colEl) return;
-
     const rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
     if (!rowEl) return;
-
-    const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
-    
-    // Update class: remove dim, add color
+    const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
+    /* className replace preserves data-* attributes */
     rowEl.className = `row ${color}`;
-    if (meta.isGroupStart && !meta.showGroupLabel) {
-        rowEl.classList.add("group-start");
-    }
-    
-    rowEl.innerHTML = `
-        <div class="cell-ticker">${ticker}</div>
-        <div class="cell-name" title="${meta.name}">${meta.name}</div>
-        <div class="cell-price">${q.c.toFixed(2)}</div>
-        <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
-        <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
-        <div class="cell-age">${ageLabel(q.updatedAt)}</div>
-    `;
+    rowEl.innerHTML =
+        `<div class="cell-ticker">${ticker}</div>` +
+        `<div class="cell-name" title="${meta.name}">${meta.name}</div>` +
+        `<div class="cell-price">${q.c.toFixed(2)}</div>` +
+        `<div class="cell-chg">${sign}${q.d.toFixed(2)}</div>` +
+        `<div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>` +
+        `<div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
 }
 
-// ── Age label updater ──
+/* ── page nav ── */
+function switchPage(idx) {
+    document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
+    document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+}
+
+/* FIX #4: clamped navigation — no wrapping */
+document.addEventListener("keydown", e => {
+    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        const tabs = document.querySelectorAll(".tab");
+        let cur = [...tabs].findIndex(t => t.classList.contains("active"));
+        if (e.key === "ArrowRight" && cur < numPages - 1) switchPage(cur + 1);
+        else if (e.key === "ArrowLeft" && cur > 0) switchPage(cur - 1);
+    }
+});
+
+/* ── dblclick ticker → Yahoo Finance ── */
+document.addEventListener("dblclick", e => {
+    const cell = e.target.closest(".cell-ticker");
+    const ticker = cell?.textContent?.trim();
+    if (ticker) {
+        window.open(
+            `https://finance.yahoo.com/quote/${encodeURIComponent(ticker.toUpperCase())}/`,
+            "_blank", "noopener,noreferrer"
+        );
+    }
+});
+
+/* ── age refresh ── */
 setInterval(() => {
     masterList.forEach(t => {
         const q = quoteStore[t], meta = tickerMeta[t];
-        if (!q||!meta) return;
+        if (!q || !meta) return;
         const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-ticker="${t}"]`);
         const age = row?.querySelector(".cell-age");
         if (age) age.textContent = ageLabel(q.updatedAt);
     });
 }, 30000);
 
-// ── API fetch ──
+/* ── API ── */
 async function fetchQuote(ticker) {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
     for (let attempt = 0; attempt < 5; attempt++) {
         try {
             const res = await fetch(url);
-            if (res.status === 429) {
-                setStatus("Rate limited — pausing…", true);
-                await sleep(PAUSE_ON_429);
-                continue;
-            }
+            if (res.status === 429) { setStatus("Rate limited — pausing…", true); await sleep(PAUSE_ON_429); continue; }
             if (!res.ok) return;
             const data = await res.json();
             if (data && data.c != null && data.c !== 0) {
@@ -452,91 +377,56 @@ async function rollingLoop() {
     }
 }
 
-// ── Repack after initial render if columns overflow ──
-function checkAndRepack() {
+/* ── repack if columns overflow ── */
+function repackIfNeeded(unique) {
     const col0 = document.getElementById("col-0-0");
-    if (!col0) return;
-    if (col0.scrollHeight <= col0.offsetHeight + 2) return; // +2 for rounding
-
-    // Measure actual available height and row height
+    if (!col0 || col0.scrollHeight <= col0.offsetHeight + 2) return false;
     const sampleRow = col0.querySelector(".row");
-    if (!sampleRow) return;
+    if (!sampleRow) return false;
     const actualRowH = sampleRow.offsetHeight;
     const colH = col0.offsetHeight;
-    
-    // Account for group labels: count them in col-0-0
-    const groupLabels = col0.querySelectorAll(".group-label");
-    const groupLabelSpace = Array.from(groupLabels).reduce((sum, el) => sum + el.offsetHeight, 0);
-    const availableForRows = colH - groupLabelSpace;
-    const newRowsPerCol = Math.floor(availableForRows / (actualRowH + 0.5));
-    
-    // But we need uniform row count. The max group label overhead per column
-    // can vary, so use a conservative estimate.
-    // Estimate: at most 3 group labels per column, each ~14px
-    const conservativeRowsPerCol = Math.floor((colH - 3 * 14) / (actualRowH + 0.5));
-    const tickersPerCol = Math.max(8, conservativeRowsPerCol);
-    const tickersPerPage = tickersPerCol * NUM_COLS;
-
-    // Reassign layout
-    const allTickers = [...masterList];
-    let lastGroupInCol = {};
-    const firstGroupOccurrence = new Set();
-
-    allTickers.forEach((t, idx) => {
-        const meta = tickerMeta[t];
-        const pageIdx = Math.floor(idx / tickersPerPage);
-        const posInPage = idx % tickersPerPage;
-        const colIdx = Math.min(Math.floor(posInPage / tickersPerCol), NUM_COLS - 1);
-        const colKey = `${pageIdx}-${colIdx}`;
-
-        const isNewGroupInCol = (lastGroupInCol[colKey] !== meta.group);
-        lastGroupInCol[colKey] = meta.group;
-        const isFirstGroupEver = !firstGroupOccurrence.has(meta.group);
-        if (isNewGroupInCol) firstGroupOccurrence.add(meta.group);
-
-        meta.pageIdx = pageIdx;
-        meta.colIdx = colIdx;
-        meta.order = posInPage;
-        meta.isGroupStart = isNewGroupInCol;
-        meta.showGroupLabel = isFirstGroupEver;
-    });
-
-    const newNumPages = Math.ceil(allTickers.length / tickersPerPage);
-    if (newNumPages !== numPages) {
-        numPages = newNumPages;
-        document.getElementById("tabs").innerHTML = "";
-        document.getElementById("pages").innerHTML = "";
-        buildChrome();
-    } else {
-        document.querySelectorAll(".col").forEach(c => c.innerHTML = "");
-    }
-
-    // Re-render everything
-    renderAllTickersImmediate();
-    for (const t of allTickers) {
-        if (quoteStore[t]) renderTicker(t);
-    }
+    /* Account for group-label margin overhead in worst case */
+    const labels = col0.querySelectorAll("[data-group-label]").length;
+    const overhead = labels * 14;
+    const newRPC = Math.floor((colH - overhead) / actualRowH);
+    if (newRPC < 5 || newRPC >= rowsPerCol) return false;
+    rowsPerCol = newRPC;
+    assignLayout(unique);
+    buildChrome();
+    renderAllSkeletons();
+    for (const t of masterList) { if (quoteStore[t]) renderTicker(t); }
+    return true;
 }
 
+/* ── init ── */
 async function init() {
     setStatus("Reading sheet…");
-    // Need a visible page to measure height
+
+    /* temp page for height measurement */
     const tempPage = document.createElement("div");
     tempPage.className = "page active";
     tempPage.style.visibility = "hidden";
     document.getElementById("pages").appendChild(tempPage);
-    await buildMasterList();
+
+    const unique = await buildMasterList();
+
+    /* measure */
+    const colH = tempPage.offsetHeight;
     document.getElementById("pages").removeChild(tempPage);
+    rowsPerCol = Math.max(10, Math.floor(colH / 21));
+
+    assignLayout(unique);
     buildChrome();
-    renderAllTickersImmediate();
-    
-    // Check if we need to repack after first render
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            checkAndRepack();
-        });
-    });
-    
+    renderAllSkeletons();
+
+    /* repack after first paint if needed */
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (repackIfNeeded(unique)) {
+            /* one more pass in case the repack itself overflows */
+            requestAnimationFrame(() => repackIfNeeded(unique));
+        }
+    }));
+
     rollingLoop();
 }
 
