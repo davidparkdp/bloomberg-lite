@@ -11,7 +11,7 @@
         .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
         .header-time  { color: #888; font-size: 11px; margin-left: auto; }
         
-        .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 4px 12px; background: #111; border-bottom: 1px solid #333; overflow-x: auto; }
+        .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 4px 12px; background: #111; border-bottom: 1px solid #333; overflow-x: auto; white-space: nowrap; }
         .tab { flex-shrink: 0; padding: 3px 14px; cursor: pointer; border: 1px solid #444; color: #888; background: transparent; font-family: monospace; font-size: 11px; }
         .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 
@@ -22,16 +22,17 @@
         .col { flex: 1; border-right: 1px solid #1a1a1a; height: 100%; overflow: hidden; }
         .col:last-child { border-right: none; }
 
-        .group { color: orange; height: 42px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; }
+        .group { color: orange; height: 42px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; overflow: hidden; white-space: nowrap; }
         
-        .row { display: grid; grid-template-columns: 55px 95px 66px 58px 56px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 1px; }
+        /* ADJUSTED: Wider Ticker and Name columns to handle "Inc." and long descriptions */
+        .row { display: grid; grid-template-columns: 55px 110px 60px 55px 55px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 2px; }
         .row:hover { background: #141414; }
         
         .cell-ticker a { font-weight: bold; color: #ffb300; text-decoration: none; }
         .cell-ticker a:hover { color: #00ffcc; text-decoration: underline; }
         
-        .cell-name { color: #ffb300; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
-        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; }
+        .cell-name { color: #ffb300; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
+        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; font-size: 11px; }
         .cell-age { font-size: 9px; color: #ffb300; opacity: 0.6; }
         
         .green { color: #00e676; }
@@ -64,6 +65,14 @@ let tickerMeta = {};
 let quoteStore = {};
 let numPages = 0;
 
+// Proper CSV parser that handles commas inside quotes
+function parseCSV(text) {
+    const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
+    return text.split('\n').map(line => {
+        return line.split(re).map(field => field.replace(/^"|"$/g, '').trim());
+    });
+}
+
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
@@ -84,20 +93,18 @@ async function init() {
     try {
         const resp = await fetch(SHEET_URL);
         const text = await resp.text();
-        const rows = text.trim().split("\n").map(l => l.split(",").map(f => f.replace(/"/g,"").trim()));
+        const rows = parseCSV(text.trim());
         
         const allItems = [];
         const maxColsAvailable = Math.max(...rows.map(r => r.length));
         
-        // DYNAMIC TRIPLET FETCH: Loops through all columns (A-C, D-F, ... up to BW and beyond)
         for (let baseCol = 0; baseCol < maxColsAvailable; baseCol += 3) {
             rows.forEach(row => {
                 const group  = row[baseCol];
                 const ticker = row[baseCol + 1];
                 const name   = row[baseCol + 2] || "";
                 
-                // Only add if group and ticker exist to avoid blank slots
-                if (group && ticker && ticker !== "Ticker") { 
+                if (group && ticker && ticker !== "Ticker" && group !== "Group") { 
                     allItems.push({ group, ticker, name });
                 }
             });
@@ -105,7 +112,7 @@ async function init() {
 
         const pagesContainer = document.getElementById("pages");
         const colH = pagesContainer.offsetHeight || 800;
-        const slotsPerCol = Math.floor((colH - 63) / 21); // Increased safety margin for strict alignment
+        const slotsPerCol = Math.floor((colH - 63) / 21); 
 
         let curP = 0, curC = 0, curS = 0, lastG = "";
 
@@ -161,6 +168,8 @@ function renderUI() {
     masterList.forEach(t => {
         const m = tickerMeta[t];
         const col = document.getElementById(`col-${m.pIdx}-${m.cIdx}`);
+        if (!col) return;
+        
         if (m.showH) {
             const g = document.createElement("div");
             g.className = "group"; g.textContent = m.group;
