@@ -1,120 +1,120 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Bloomberg Lite</title>
-    <link rel="icon" href="data:,">
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html { height: 100%; }
-        body {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            background: #0a0a0a;
-            color: #00ffcc;
-            font-family: monospace;
-            font-size: 13px;
-        }
-        .header {
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            color: orange;
-            padding: 6px 12px;
-            border-bottom: 1px solid #333;
-            background: #111;
-        }
-        .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
-        .header-time  { color: #888; font-size: 11px; margin-left: auto; }
-        .tabs {
-            flex-shrink: 0;
-            display: flex;
-            gap: 2px;
-            padding: 4px 12px;
-            background: #111;
-            border-bottom: 1px solid #333;
-        }
-        .tab {
-            padding: 3px 14px;
-            cursor: pointer;
-            border: 1px solid #444;
-            color: #888;
-            background: transparent;
-            font-family: monospace;
-            font-size: 11px;
-            letter-spacing: 1px;
-            transition: all .15s;
-        }
-        .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
-        .tab:hover:not(.active) { color: #ccc; border-color: #666; }
-        #pages {
-            flex: 1 1 0;
-            min-height: 0;
-            position: relative;
-        }
-        .page {
-            display: none;
-            position: absolute;
-            inset: 0;
-            padding: 4px 6px;
-        }
-        .page.active { display: flex; }
-        .col {
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            padding: 0 3px;
-            border-right: 1px solid #1a1a1a;
-        }
-        .col:first-child { padding-left: 0; }
-        .col:last-child  { border-right: none; padding-right: 0; }
-        .statusbar {
-            flex-shrink: 0;
-            background: #111;
-            border-top: 1px solid #222;
-            padding: 2px 12px;
-            font-size: 10px;
-            color: #555;
-            display: flex;
-            gap: 16px;
-        }
-        .statusbar span { color: #555; }
-        .status-warn { color: #ffaa00 !important; }
-        .group {
-            color: orange;
-            margin-top: 12px;
-            margin-bottom: 1px;
-            font-size: 11px;
-            letter-spacing: 1px;
-            border-bottom: 1px solid #1e1e1e;
-            padding-bottom: 2px;
-            text-transform: uppercase;
-        }
-        .group:first-child { margin-top: 2px; }
-        .row {
-            display: grid;
-            grid-template-columns: 48px 82px 66px 58px 56px 20px;
-            padding: 2px 0;
-            border-bottom: 1px solid #0f0f0f;
-            align-items: center;
-            gap: 1px;
-        }
-        .row:hover { background: #141414; }
-        .cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
-        .cell-name {
-            text-align: left; color: #ffb300; font-size: 11px;
-            padding-right: 3px; overflow: hidden;
-            text-overflow: ellipsis; white-space: nowrap;
-            cursor: default; opacity: 0.85;
-        }
-        .cell-price { text-align: right; }
-        .cell-chg   { text-align: right; }
-        .cell-pct   { text-align: right; }
-        .cell-age   { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
-        .green { color: #00e676; }
-        .red   { color: #ff5252; }
-    </style>
+<meta charset="UTF-8">
+<title>Bloomberg Lite</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; }
+body {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #0a0a0a;
+    color: #00ffcc;
+    font-family: monospace;
+    font-size: 13px;
+}
+.header {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    color: orange;
+    padding: 6px 12px;
+    border-bottom: 1px solid #333;
+    background: #111;
+}
+.header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
+.header-time  { color: #888; font-size: 11px; margin-left: auto; }
+.tabs {
+    flex-shrink: 0;
+    display: flex;
+    gap: 2px;
+    padding: 4px 12px;
+    background: #111;
+    border-bottom: 1px solid #333;
+}
+.tab {
+    padding: 3px 14px;
+    cursor: pointer;
+    border: 1px solid #444;
+    color: #888;
+    background: transparent;
+    font-family: monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    transition: all .15s;
+}
+.tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
+.tab:hover:not(.active) { color: #ccc; border-color: #666; }
+#pages {
+    flex: 1 1 0;
+    min-height: 0;
+    position: relative;
+}
+.page {
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: 4px 6px;
+}
+.page.active { display: flex; }
+.col {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 3px;
+    border-right: 1px solid #1a1a1a;
+}
+.col:first-child { padding-left: 0; }
+.col:last-child  { border-right: none; padding-right: 0; }
+.statusbar {
+    flex-shrink: 0;
+    background: #111;
+    border-top: 1px solid #222;
+    padding: 2px 12px;
+    font-size: 10px;
+    color: #555;
+    display: flex;
+    gap: 16px;
+}
+.statusbar span { color: #555; }
+.status-warn { color: #ffaa00 !important; }
+.group {
+    color: orange;
+    margin-top: 12px;
+    margin-bottom: 1px;
+    font-size: 11px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #1e1e1e;
+    padding-bottom: 2px;
+    text-transform: uppercase;
+}
+.group:first-child { margin-top: 2px; }
+.row {
+    display: grid;
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
+    padding: 2px 0;
+    border-bottom: 1px solid #0f0f0f;
+    align-items: center;
+    gap: 1px;
+}
+.row:hover { background: #141414; }
+.cell-ticker { text-align: left; font-weight: bold; color: #ffb300; cursor: pointer; }
+.cell-name   {
+    text-align: left; color: #ffb300; font-size: 11px;
+    padding-right: 3px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+    cursor: default; opacity: 0.85;
+}
+.cell-price { text-align: right; }
+.cell-chg   { text-align: right; }
+.cell-pct   { text-align: right; }
+.cell-age   { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
+.green { color: #00e676; }
+.red   { color: #ff5252; }
+.spinner { color: #333; padding: 20px 6px; letter-spacing: 2px; font-size: 11px; }
+</style>
 </head>
 <body>
 <div class="header">
@@ -127,23 +127,22 @@
     <span id="status">Loading…</span>
     <span id="counter"></span>
 </div>
-
 <script>
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
-const PAUSE_ON_429  = 3000; 
-const NUM_COLS      = 5;
+const PAUSE_ON_429  = 4000;
+const NUM_COLS      = 5;   // display columns per page
 const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
-// ── CSV parser ──
+// ── CSV parser (handles quoted commas) ──
 function parseCSV(text) {
     return text.trim().split("\n").map(line => {
         const fields = [];
         let cur = "", inQ = false;
         for (const ch of line) {
-            if (ch === '"') inQ = !inQ;
+            if (ch === '"') { inQ = !inQ; }
             else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
-            else cur += ch;
+            else { cur += ch; }
         }
         fields.push(cur.trim());
         return fields;
@@ -152,15 +151,14 @@ function parseCSV(text) {
 
 async function loadCSV(url) {
     const r = await fetch(url);
-    const text = await r.text();
-    return parseCSV(text);
+    return parseCSV(await r.text());
 }
 
 // ── State ──
-const quoteStore = {};
-const tickerMeta = {};
-let masterList = [];
-let numPages = 0;
+const quoteStore = {};  // ticker → { c, d, dp, updatedAt }
+const tickerMeta = {};  // ticker → { group, name, pageIdx, colIdx, order }
+let   masterList = [];
+let   numPages   = 0;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -169,11 +167,9 @@ function setStatus(msg, warn=false) {
     el.textContent = msg;
     el.className = warn ? "status-warn" : "";
 }
-
 function setCounter(i, n) {
     document.getElementById("counter").textContent = `${i} / ${n}`;
 }
-
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent =
@@ -191,17 +187,22 @@ function ageLabel(ts) {
     return Math.floor(s/3600)+"h";
 }
 
+// ── Build master list from single sheet ──
 async function buildMasterList() {
     masterList = [];
     const rows = await loadCSV(SHEET_URL);
+
     const maxCols = Math.max(...rows.map(r => r.length));
 
-    const allItems = [];
+    const allItems = []; // { group, ticker, name }
     for (let base = 0; base + 1 < maxCols; base += 3) {
+        const groupCol  = base;
+        const tickerCol = base + 1;
+        const nameCol   = base + 2;
         rows.forEach(row => {
-            const group  = row[base] || "";
-            const ticker = row[base + 1] || "";
-            const name   = row[base + 2] || "";
+            const group  = row[groupCol]  || "";
+            const ticker = row[tickerCol] || "";
+            const name   = row[nameCol]   || "";
             if (group && ticker) allItems.push({ group, ticker, name });
         });
     }
@@ -213,21 +214,26 @@ async function buildMasterList() {
         return true;
     });
 
-    // Determine layout
     const testCol = document.createElement("div");
     testCol.style.cssText = "position:absolute;inset:0;visibility:hidden;";
     document.getElementById("pages").appendChild(testCol);
-    const colH = testCol.offsetHeight || 600; 
+    const colH = testCol.offsetHeight;
     document.getElementById("pages").removeChild(testCol);
 
-    const rowsPerCol = Math.max(10, Math.floor(colH / 21));
+    const rowsPerCol     = Math.max(10, Math.floor(colH / 21));
     const tickersPerPage = rowsPerCol * NUM_COLS;
 
     unique.forEach((item, idx) => {
         const pageIdx = Math.floor(idx / tickersPerPage);
         const posInPage = idx % tickersPerPage;
-        const colIdx = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
-        tickerMeta[item.ticker] = { group: item.group, name: item.name, pageIdx, colIdx, order: posInPage };
+        const colIdx  = Math.min(Math.floor(posInPage / rowsPerCol), NUM_COLS - 1);
+        tickerMeta[item.ticker] = {
+            group:   item.group,
+            name:    item.name,
+            pageIdx,
+            colIdx,
+            order:   posInPage
+        };
         masterList.push(item.ticker);
     });
 
@@ -235,11 +241,8 @@ async function buildMasterList() {
 }
 
 function buildChrome() {
-    const tabsEl = document.getElementById("tabs");
+    const tabsEl  = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
-    tabsEl.innerHTML = "";
-    pagesEl.innerHTML = "";
-
     for (let i = 0; i < numPages; i++) {
         const tab = document.createElement("button");
         tab.className = "tab" + (i===0?" active":"");
@@ -260,102 +263,9 @@ function buildChrome() {
     }
 }
 
-// ── OPTIMIZED: Render placeholders instantly ──
-function renderAllPlaceholders() {
-    masterList.forEach(ticker => {
-        const meta = tickerMeta[ticker];
-        const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
-        if (!colEl) return;
-
-        const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
-        let g = document.getElementById(gid);
-        if (!g) {
-            g = document.createElement("div");
-            g.className = "group"; g.id = gid;
-            g.textContent = meta.group;
-            colEl.appendChild(g); 
-        }
-
-        const rowEl = document.createElement("div");
-        rowEl.dataset.ticker = ticker;
-        rowEl.className = `row`;
-        rowEl.innerHTML = `
-            <div class="cell-ticker">${ticker}</div>
-            <div class="cell-name" title="${meta.name}">${meta.name}</div>
-            <div class="cell-price">...</div>
-            <div class="cell-chg">...</div>
-            <div class="cell-pct">...</div>
-            <div class="cell-age"></div>
-        `;
-        colEl.appendChild(rowEl);
-    });
-}
-
 function switchPage(idx) {
     document.querySelectorAll(".tab").forEach((t,i)  => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
-}
-
-function renderTicker(ticker) {
-    const q = quoteStore[ticker], meta = tickerMeta[ticker];
-    if (!q || !meta) return;
-    const rowEl = document.querySelector(`[data-ticker="${ticker}"]`);
-    if (!rowEl) return;
-
-    const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
-    rowEl.className = `row ${color}`;
-    rowEl.innerHTML = `
-        <div class="cell-ticker">${ticker}</div>
-        <div class="cell-name" title="${meta.name}">${meta.name}</div>
-        <div class="cell-price">${q.c.toFixed(2)}</div>
-        <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
-        <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
-        <div class="cell-age">${ageLabel(q.updatedAt)}</div>
-    `;
-}
-
-async function fetchQuote(ticker) {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
-    try {
-        const res = await fetch(url);
-        if (res.status === 429) {
-            setStatus("Rate limited — pausing...", true);
-            await sleep(PAUSE_ON_429);
-            return;
-        }
-        const data = await res.json();
-        if (data && data.c) {
-            quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
-            renderTicker(ticker);
-        }
-    } catch (e) { console.error(e); }
-}
-
-async function rollingLoop() {
-    let idx = 0;
-    while (true) {
-        if (masterList.length === 0) { await sleep(1000); continue; }
-        const t = masterList[idx];
-        setStatus(`Fetching ${t}...`);
-        setCounter(idx+1, masterList.length);
-        await fetchQuote(t);
-        await sleep(CALL_DELAY_MS);
-        idx = (idx+1) % masterList.length;
-    }
-}
-
-async function init() {
-    setStatus("Reading sheet...");
-    await buildMasterList();
-    
-    buildChrome();
-    renderAllPlaceholders();
-    
-    // Pause briefly to let the browser paint the placeholders
-    await sleep(50); 
-    
-    setStatus("Ready.");
-    rollingLoop();
 }
 
 document.addEventListener("keydown", e => {
@@ -367,8 +277,151 @@ document.addEventListener("keydown", e => {
     }
 });
 
+document.addEventListener("dblclick", e => {
+    const cell = e.target.closest(".cell-ticker");
+    if (!cell) return;
+    window.open(`https://finance.yahoo.com/quote/${cell.textContent.trim()}/`, "_blank");
+});
+
+function insertByOrder(container, el, order) {
+    el.dataset.order = order;
+    const after = [...container.children].find(c => parseFloat(c.dataset.order ?? 999) > order);
+    if (after) container.insertBefore(el, after);
+    else container.appendChild(el);
+}
+
+function renderTicker(ticker) {
+    const q = quoteStore[ticker], meta = tickerMeta[ticker];
+    if (!q || !meta) return;
+    const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
+    if (!colEl) return;
+
+    const gid = `grp-${meta.pageIdx}-${meta.colIdx}-${meta.group.replace(/\W+/g,"-")}`;
+    if (!document.getElementById(gid)) {
+        const g = document.createElement("div");
+        g.className = "group"; g.id = gid;
+        g.textContent = meta.group;
+        insertByOrder(colEl, g, meta.order - 0.5);
+    }
+
+    const up = q.d >= 0, color = up?"green":"red", sign = up?"+":"";
+    let rowEl = colEl.querySelector(`[data-ticker="${ticker}"]`);
+    if (!rowEl) {
+        rowEl = document.createElement("div");
+        rowEl.dataset.ticker = ticker;
+        insertByOrder(colEl, rowEl, meta.order);
+    }
+    rowEl.className = `row ${color}`;
+    rowEl.innerHTML = `
+        <div class="cell-ticker">${ticker}</div>
+        <div class="cell-name" title="${meta.name}">${meta.name}</div>
+        <div class="cell-price">${q.c.toFixed(2)}</div>
+        <div class="cell-chg">${sign}${q.d.toFixed(2)}</div>
+        <div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>
+        <div class="cell-age">${ageLabel(q.updatedAt)}</div>
+    `;
+
+    if (!window._repackDone && Object.keys(quoteStore).length === 5) {
+        window._repackDone = true;
+        requestAnimationFrame(checkAndRepack);
+    }
+}
+
+function checkAndRepack() {
+    const col0 = document.getElementById("col-0-0");
+    if (!col0) return;
+    if (col0.scrollHeight <= col0.offsetHeight) return;
+
+    const sampleRow = col0.querySelector(".row");
+    if (!sampleRow) return;
+    const actualRowH = sampleRow.offsetHeight;
+    const colH = col0.offsetHeight;
+    const newRowsPerCol = Math.floor(colH / (actualRowH + 1));
+    const newTickersPerPage = newRowsPerCol * NUM_COLS;
+
+    const allTickers = [...masterList];
+    let globalIdx = 0;
+    for (const t of allTickers) {
+        const pageIdx = Math.floor(globalIdx / newTickersPerPage);
+        const posInPage = globalIdx % newTickersPerPage;
+        const colIdx = Math.min(Math.floor(posInPage / newRowsPerCol), NUM_COLS - 1);
+        tickerMeta[t].pageIdx = pageIdx;
+        tickerMeta[t].colIdx  = colIdx;
+        tickerMeta[t].order   = posInPage;
+        globalIdx++;
+    }
+
+    const newNumPages = Math.ceil(allTickers.length / newTickersPerPage);
+    if (newNumPages !== numPages) {
+        numPages = newNumPages;
+        document.getElementById("tabs").innerHTML = "";
+        document.getElementById("pages").innerHTML = "";
+        buildChrome();
+    } else {
+        document.querySelectorAll(".col").forEach(c => c.innerHTML = "");
+    }
+
+    for (const t of allTickers) {
+        if (quoteStore[t]) renderTicker(t);
+    }
+}
+
+setInterval(() => {
+    masterList.forEach(t => {
+        const q = quoteStore[t], meta = tickerMeta[t];
+        if (!q||!meta) return;
+        const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-ticker="${t}"]`);
+        const age = row?.querySelector(".cell-age");
+        if (age) age.textContent = ageLabel(q.updatedAt);
+    });
+}, 30000);
+
+async function fetchQuote(ticker) {
+    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+            const res = await fetch(url);
+            if (res.status === 429) {
+                setStatus("Rate limited — pausing 65s…", true);
+                await sleep(PAUSE_ON_429);
+                continue;
+            }
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data && data.c != null && data.c !== 0) {
+                quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
+                renderTicker(ticker);
+            }
+            return;
+        } catch { await sleep(2000); }
+    }
+}
+
+async function rollingLoop() {
+    let idx = 0;
+    while (true) {
+        const t = masterList[idx];
+        setStatus(`Fetching ${t}…`);
+        setCounter(idx+1, masterList.length);
+        await fetchQuote(t);
+        await sleep(CALL_DELAY_MS);
+        idx = (idx+1) % masterList.length;
+    }
+}
+
+async function init() {
+    setStatus("Reading sheet…");
+    const tempPage = document.createElement("div");
+    tempPage.className = "page active";
+    tempPage.style.visibility = "hidden";
+    document.getElementById("pages").appendChild(tempPage);
+    await buildMasterList();
+    document.getElementById("pages").removeChild(tempPage);
+    buildChrome();
+    rollingLoop();
+}
+
 init();
 </script>
 </body>
 </html>
-
