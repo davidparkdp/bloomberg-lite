@@ -277,10 +277,21 @@ document.addEventListener("keydown", e => {
     }
 });
 
-document.addEventListener("dblclick", e => {
+document.addEventListener("dblclick", (e) => {
     const cell = e.target.closest(".cell-ticker");
-    if (!cell) return;
-    window.open(`https://finance.yahoo.com/quote/${cell.textContent.trim()}/`, "_blank");
+    
+    // 1. Safety check: Ensure the cell exists and has text
+    const ticker = cell?.textContent?.trim();
+
+    if (ticker) {
+        // 2. Clean the ticker (remove any non-alphanumeric characters except dots/dashes)
+        // 3. Encode for URL safety (e.g., BRK.B becomes BRK.B instead of breaking)
+        const cleanTicker = encodeURIComponent(ticker.toUpperCase());
+        const url = `https://finance.yahoo.com/quote/${cleanTicker}/`;
+
+        // 4. Security best practice for opening new tabs
+        window.open(url, "_blank", "noopener,noreferrer");
+    }
 });
 
 function insertByOrder(container, el, order) {
@@ -425,3 +436,4 @@ init();
 </script>
 </body>
 </html>
+
