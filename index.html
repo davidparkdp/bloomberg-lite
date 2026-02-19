@@ -12,22 +12,26 @@
         .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 4px 12px; background: #111; border-bottom: 1px solid #333; overflow-x: auto; white-space: nowrap; }
         .tab { flex-shrink: 0; padding: 3px 14px; cursor: pointer; border: 1px solid #444; color: #888; background: transparent; font-family: monospace; font-size: 11px; }
         .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
+        
         #pages { flex: 1; position: relative; height: 100%; }
         .page { display: none; position: absolute; inset: 0; padding: 0 6px; flex-direction: row; }
         .page.active { display: flex; }
         .col { flex: 1; border-right: 1px solid #1a1a1a; height: 100%; overflow: hidden; }
         .col:last-child { border-right: none; }
-        .group { color: orange; height: 42px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; white-space: nowrap; }
-        .row { display: grid; grid-template-columns: 52px 105px 65px 55px 55px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 3px; }
+        
+        /* ADJUSTED: Taller headers and rows for better legibility */
+        .group { color: orange; height: 46px; display: flex; align-items: flex-end; padding: 0 0 6px 3px; font-size: 12px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; white-space: nowrap; }
+        .row { display: grid; grid-template-columns: 52px 105px 65px 55px 55px 25px; height: 24px; line-height: 24px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 3px; }
         .row:hover { background: #141414; }
+        
         .cell-ticker a { font-weight: bold; color: #ffb300; text-decoration: none; }
         .cell-ticker a:hover { color: #00ffcc; text-decoration: underline; }
         .cell-name { color: #ffb300; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
-        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; }
+        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; font-size: 12px; }
         .cell-age { font-size: 9px; color: #ffb300; opacity: 0.6; }
         .green { color: #00e676; }
         .red { color: #ff5252; }
-        .statusbar { flex-shrink: 0; background: #111; border-top: 1px solid #222; padding: 2px 12px; font-size: 10px; color: #555; display: flex; gap: 16px; height: 20px; align-items: center; }
+        .statusbar { flex-shrink: 0; background: #111; border-top: 1px solid #222; padding: 2px 12px; font-size: 10px; color: #555; display: flex; gap: 16px; height: 22px; align-items: center; }
     </style>
 </head>
 <body style="display: flex; flex-direction: column;">
@@ -54,7 +58,6 @@ let tickerMeta = {};
 let quoteStore = {};
 let numPages = 0;
 
-// THE FIX: This regex correctly identifies commas ONLY when they are not inside quotes
 function parseCSVLine(line) {
     const result = [];
     let cur = "";
@@ -107,7 +110,6 @@ async function init() {
                     const currentGroup = colA || activeGroup || "UNCLASSIFIED";
                     if (colA) activeGroup = colA; 
 
-                    // Ensure Ticker is valid (No spaces, short length)
                     if (colB.length < 12 && !colB.includes(" ")) {
                         allItems.push({ group: activeGroup, ticker: colB.toUpperCase(), name: colC });
                     }
@@ -117,18 +119,22 @@ async function init() {
 
         const pagesContainer = document.getElementById("pages");
         const colH = pagesContainer.offsetHeight || 800;
-        const slotsPerCol = Math.floor((colH - 63) / 21); 
+        
+        // NEW PRECISION CALC: Use 24px per row + 46px per group header
+        const slotsPerCol = Math.floor((colH - 24) / 24); 
 
         let curP = 0, curC = 0, curS = 0, lastG = "";
         allItems.forEach(item => {
             const isNewG = item.group !== lastG;
-            const cost = isNewG ? 3 : 1;
+            // A header (46px) is roughly 2 rows (24px * 2 = 48px)
+            const cost = isNewG ? 2 : 1;
+            
             if (curS + cost > slotsPerCol) {
                 curC++;
                 if (curC >= NUM_COLS) { curP++; curC = 0; }
                 curS = 0;
                 tickerMeta[item.ticker] = { ...item, pIdx: curP, cIdx: curC, showH: true };
-                curS = 3;
+                curS = 2;
             } else {
                 tickerMeta[item.ticker] = { ...item, pIdx: curP, cIdx: curC, showH: isNewG };
                 curS += cost;
