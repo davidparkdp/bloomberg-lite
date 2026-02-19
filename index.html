@@ -81,14 +81,13 @@ body {
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 
-/* Every visible element in a column is a .slot — fixed height */
+/* Every element in a column is a .slot — fixed height */
 .slot {
     height: 21px;
     line-height: 21px;
     overflow: hidden;
 }
-
-/* Group heading row: grey, same font size as tickers, uppercase */
+/* Group heading: grey, same font size as tickers */
 .slot-heading {
     color: #888;
     font-size: 13px;
@@ -97,12 +96,8 @@ body {
     text-transform: uppercase;
     white-space: nowrap;
 }
-
-/* Empty spacer row (first row when no heading needed) */
-.slot-empty {
-    /* just takes up 21px of space */
-}
-
+/* Empty spacer */
+.slot-empty {}
 /* Data row */
 .slot-data {
     display: grid;
@@ -193,14 +188,6 @@ let masterList = [];
 let numPages = 0;
 let slotsPerCol = 0;
 
-/*
- * Build a "slot stream": an ordered list of slots where each slot is either
- *   { type:"heading", text:"PHARMA" }
- *   { type:"data", ticker:"ABBV", name:"AbbVie Inc.", group:"PHARMA" }
- *
- * A heading slot is inserted before the first ticker of each group,
- * but ONLY on the first-ever occurrence of that group.
- */
 async function loadUniqueItems() {
     const rows = await loadCSV(SHEET_URL);
     const maxCols = Math.max(...rows.map(r => r.length));
@@ -221,6 +208,10 @@ async function loadUniqueItems() {
     });
 }
 
+/*
+ * Build slot stream: headings inserted before first ticker of each group
+ * (first occurrence only). Headings are just another slot in the sequence.
+ */
 function buildSlotStream(unique) {
     const slots = [];
     const groupSeen = new Set();
@@ -235,56 +226,47 @@ function buildSlotStream(unique) {
 }
 
 /*
- * Pack slots into columns. Each column has exactly `slotsPerCol` slots.
- * Rule: row 0 of every column must be a heading or an empty spacer.
- *       If a heading naturally lands at position 0, great.
- *       If data would land at position 0, insert an empty spacer first.
- *
- * This may cause some slots to shift, so we do a greedy packing pass.
+ * Pack slots into fixed-size columns.
+ * Headings flow naturally wherever they land — multiple per column is fine.
+ * Only rule: row 0 of every column must be heading or empty spacer.
+ * Also: don't let a heading be the very last row of a column (orphaned).
  */
 function packIntoColumns(slots) {
-    // columns[i] = array of slot objects, length === slotsPerCol
     const columns = [];
     let col = [];
-    let si = 0; // index into slots
+    let si = 0;
 
     while (si < slots.length) {
         const posInCol = col.length;
 
-        if (posInCol === 0) {
-            // Row 0: must be heading or empty
-            if (slots[si].type === "heading") {
-                col.push(slots[si]);
-                si++;
-            } else {
-                // Insert empty spacer
-                col.push({ type: "empty" });
-            }
-        } else if (posInCol >= slotsPerCol) {
-            // Column full, start new one
+        // Column is full — finalize and start new
+        if (posInCol >= slotsPerCol) {
             columns.push(col);
             col = [];
-            // Don't advance si — re-process this slot in the new column
-        } else {
-            // Normal position: just add the slot
-            // But check: if this is a heading and it's the LAST slot in the column,
-            // that looks bad — push it to the next column instead
-            if (slots[si].type === "heading" && posInCol === slotsPerCol - 1) {
-                // Fill remaining with empty, heading goes to next column
-                col.push({ type: "empty" });
-                columns.push(col);
-                col = [];
-            } else {
-                col.push(slots[si]);
-                si++;
-            }
+            continue; // re-process current slot in new column
         }
+
+        // Row 0: must be heading or empty spacer
+        if (posInCol === 0 && slots[si].type === "data") {
+            col.push({ type: "empty" });
+            continue; // re-process current slot at position 1
+        }
+
+        // Don't orphan a heading as the last row of a column
+        if (slots[si].type === "heading" && posInCol === slotsPerCol - 1) {
+            col.push({ type: "empty" });
+            columns.push(col);
+            col = [];
+            continue; // heading will go into next column
+        }
+
+        // Normal: add the slot
+        col.push(slots[si]);
+        si++;
     }
 
-    // Pad the last column to slotsPerCol
-    while (col.length < slotsPerCol) {
-        col.push({ type: "empty" });
-    }
+    // Pad last column
+    while (col.length < slotsPerCol) col.push({ type: "empty" });
     if (col.length > 0) columns.push(col);
 
     return columns;
@@ -299,18 +281,17 @@ function doLayout(unique) {
 
     numPages = Math.ceil(columns.length / NUM_COLS) || 1;
 
-    // Store layout info for rendering
-    // layoutColumns[pageIdx][colIdx] = array of slot objects
     const layoutColumns = [];
     for (let p = 0; p < numPages; p++) {
         layoutColumns[p] = [];
         for (let c = 0; c < NUM_COLS; c++) {
             const gi = p * NUM_COLS + c;
-            layoutColumns[p][c] = columns[gi] || new Array(slotsPerCol).fill({ type: "empty" });
+            layoutColumns[p][c] = gi < columns.length
+                ? columns[gi]
+                : new Array(slotsPerCol).fill({ type: "empty" });
         }
     }
 
-    // Build masterList and tickerMeta from the packed layout
     for (let p = 0; p < numPages; p++) {
         for (let c = 0; c < NUM_COLS; c++) {
             for (const slot of layoutColumns[p][c]) {
@@ -341,7 +322,6 @@ function buildChrome() {
         tab.textContent = `PAGE ${i+1}`;
         tab.onclick = () => switchPage(i);
         tabsEl.appendChild(tab);
-
         const page = document.createElement("div");
         page.className = "page" + (i === 0 ? " active" : "");
         page.id = `page-${i}`;
@@ -408,7 +388,6 @@ function switchPage(idx) {
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
-// Clamped arrow keys
 document.addEventListener("keydown", e => {
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const tabs = document.querySelectorAll(".tab");
@@ -418,7 +397,6 @@ document.addEventListener("keydown", e => {
     }
 });
 
-// Double-click ticker → Yahoo Finance
 document.addEventListener("dblclick", e => {
     const cell = e.target.closest(".cell-ticker");
     const ticker = cell?.textContent?.trim();
@@ -430,7 +408,6 @@ document.addEventListener("dblclick", e => {
     }
 });
 
-// Age refresh
 setInterval(() => {
     masterList.forEach(t => {
         const q = quoteStore[t], meta = tickerMeta[t];
@@ -446,11 +423,7 @@ async function fetchQuote(ticker) {
     for (let attempt = 0; attempt < 5; attempt++) {
         try {
             const res = await fetch(url);
-            if (res.status === 429) {
-                setStatus("Rate limited — pausing…", true);
-                await sleep(PAUSE_ON_429);
-                continue;
-            }
+            if (res.status === 429) { setStatus("Rate limited — pausing…", true); await sleep(PAUSE_ON_429); continue; }
             if (!res.ok) return;
             const data = await res.json();
             if (data && data.c != null && data.c !== 0) {
@@ -485,8 +458,6 @@ function fullRebuild(unique) {
 
 async function init() {
     setStatus("Reading sheet…");
-
-    // Measure available height
     const tempPage = document.createElement("div");
     tempPage.className = "page active";
     tempPage.style.visibility = "hidden";
@@ -496,19 +467,16 @@ async function init() {
 
     const colH = tempPage.offsetHeight;
     document.getElementById("pages").removeChild(tempPage);
-
     slotsPerCol = Math.max(10, Math.floor(colH / 21));
 
     fullRebuild(unique);
 
-    // Repack check after first paint
     requestAnimationFrame(() => requestAnimationFrame(() => {
         const col0 = document.getElementById("col-0-0");
         if (col0 && col0.scrollHeight > col0.offsetHeight + 4) {
             const sample = col0.querySelector(".slot");
             if (sample) {
-                const actualH = sample.offsetHeight;
-                slotsPerCol = Math.floor(col0.offsetHeight / actualH);
+                slotsPerCol = Math.floor(col0.offsetHeight / sample.offsetHeight);
                 fullRebuild(unique);
             }
         }
