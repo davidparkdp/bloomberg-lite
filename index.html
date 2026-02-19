@@ -6,38 +6,27 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; background: #0a0a0a; color: #00ffcc; font-family: monospace; font-size: 13px; overflow: hidden; }
-        
         .header { flex-shrink: 0; display: flex; align-items: center; color: orange; padding: 6px 12px; border-bottom: 1px solid #333; background: #111; }
         .header-title { font-size: 14px; font-weight: bold; letter-spacing: 2px; }
         .header-time  { color: #888; font-size: 11px; margin-left: auto; }
-        
         .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 4px 12px; background: #111; border-bottom: 1px solid #333; overflow-x: auto; white-space: nowrap; }
         .tab { flex-shrink: 0; padding: 3px 14px; cursor: pointer; border: 1px solid #444; color: #888; background: transparent; font-family: monospace; font-size: 11px; }
         .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
-
         #pages { flex: 1; position: relative; height: 100%; }
         .page { display: none; position: absolute; inset: 0; padding: 0 6px; flex-direction: row; }
         .page.active { display: flex; }
-        
         .col { flex: 1; border-right: 1px solid #1a1a1a; height: 100%; overflow: hidden; }
         .col:last-child { border-right: none; }
-
-        .group { color: orange; height: 42px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; overflow: hidden; white-space: nowrap; }
-        
-        /* ADJUSTED: Wider Ticker and Name columns to handle "Inc." and long descriptions */
-        .row { display: grid; grid-template-columns: 55px 110px 60px 55px 55px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 2px; }
+        .group { color: orange; height: 42px; display: flex; align-items: flex-end; padding: 0 0 4px 3px; font-size: 11px; font-weight: bold; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; white-space: nowrap; }
+        .row { display: grid; grid-template-columns: 52px 105px 65px 55px 55px 25px; height: 21px; line-height: 21px; padding: 0 3px; border-bottom: 1px solid #0f0f0f; align-items: center; gap: 3px; }
         .row:hover { background: #141414; }
-        
         .cell-ticker a { font-weight: bold; color: #ffb300; text-decoration: none; }
         .cell-ticker a:hover { color: #00ffcc; text-decoration: underline; }
-        
         .cell-name { color: #ffb300; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.85; }
-        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; font-size: 11px; }
+        .cell-price, .cell-chg, .cell-pct, .cell-age { text-align: right; }
         .cell-age { font-size: 9px; color: #ffb300; opacity: 0.6; }
-        
         .green { color: #00e676; }
         .red { color: #ff5252; }
-
         .statusbar { flex-shrink: 0; background: #111; border-top: 1px solid #222; padding: 2px 12px; font-size: 10px; color: #555; display: flex; gap: 16px; height: 20px; align-items: center; }
     </style>
 </head>
@@ -65,21 +54,28 @@ let tickerMeta = {};
 let quoteStore = {};
 let numPages = 0;
 
-// Proper CSV parser that handles commas inside quotes
-function parseCSV(text) {
-    const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
-    return text.split('\n').map(line => {
-        return line.split(re).map(field => field.replace(/^"|"$/g, '').trim());
-    });
+// THE FIX: This regex correctly identifies commas ONLY when they are not inside quotes
+function parseCSVLine(line) {
+    const result = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') { inQuotes = !inQuotes; }
+        else if (char === ',' && !inQuotes) { result.push(cur.trim()); cur = ""; }
+        else { cur += char; }
+    }
+    result.push(cur.trim());
+    return result;
 }
 
 function updateClock() {
     const now = new Date();
     document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
-    
     masterList.forEach(t => {
         if (quoteStore[t]) {
-            const ageEl = document.querySelector(`#row-${t.replace(/[^a-zA-Z0-9]/g, '-')}-age`);
+            const safeId = t.replace(/[^a-zA-Z0-9]/g, '-');
+            const ageEl = document.getElementById(`age-${safeId}`);
             if (ageEl) {
                 const s = Math.floor((Date.now() - quoteStore[t].ts) / 1000);
                 ageEl.textContent = s < 60 ? s + "s" : Math.floor(s/60) + "m";
@@ -93,19 +89,28 @@ async function init() {
     try {
         const resp = await fetch(SHEET_URL);
         const text = await resp.text();
-        const rows = parseCSV(text.trim());
+        const lines = text.trim().split(/\r?\n/);
+        const rows = lines.map(line => parseCSVLine(line));
         
         const allItems = [];
         const maxColsAvailable = Math.max(...rows.map(r => r.length));
         
-        for (let baseCol = 0; baseCol < maxColsAvailable; baseCol += 3) {
+        for (let b = 0; b < maxColsAvailable; b += 3) {
+            let activeGroup = "";
             rows.forEach(row => {
-                const group  = row[baseCol];
-                const ticker = row[baseCol + 1];
-                const name   = row[baseCol + 2] || "";
-                
-                if (group && ticker && ticker !== "Ticker" && group !== "Group") { 
-                    allItems.push({ group, ticker, name });
+                const colA = (row[b] || "");
+                const colB = (row[b+1] || "");
+                const colC = (row[b+2] || "");
+
+                if (colA && !colB) { activeGroup = colA; } 
+                else if (colB && colB.toLowerCase() !== "ticker") {
+                    const currentGroup = colA || activeGroup || "UNCLASSIFIED";
+                    if (colA) activeGroup = colA; 
+
+                    // Ensure Ticker is valid (No spaces, short length)
+                    if (colB.length < 12 && !colB.includes(" ")) {
+                        allItems.push({ group: activeGroup, ticker: colB.toUpperCase(), name: colC });
+                    }
                 }
             });
         }
@@ -115,11 +120,9 @@ async function init() {
         const slotsPerCol = Math.floor((colH - 63) / 21); 
 
         let curP = 0, curC = 0, curS = 0, lastG = "";
-
         allItems.forEach(item => {
             const isNewG = item.group !== lastG;
             const cost = isNewG ? 3 : 1;
-
             if (curS + cost > slotsPerCol) {
                 curC++;
                 if (curC >= NUM_COLS) { curP++; curC = 0; }
@@ -130,7 +133,7 @@ async function init() {
                 tickerMeta[item.ticker] = { ...item, pIdx: curP, cIdx: curC, showH: isNewG };
                 curS += cost;
             }
-            masterList.push(item.ticker);
+            if (!masterList.includes(item.ticker)) masterList.push(item.ticker);
             lastG = item.group;
         });
 
@@ -138,21 +141,23 @@ async function init() {
         renderUI();
         rollingLoop();
     } catch (err) {
-        document.getElementById("status").textContent = "LOAD ERROR";
+        document.getElementById("status").textContent = "CSV ERROR";
     }
 }
 
 function renderUI() {
     const tEl = document.getElementById("tabs"), pEl = document.getElementById("pages");
     tEl.innerHTML = ""; pEl.innerHTML = "";
-    
     for (let i = 0; i < numPages; i++) {
         const btn = document.createElement("button");
         btn.className = "tab" + (i===0?" active":"");
         btn.textContent = `PAGE ${i+1}`;
-        btn.onclick = () => switchPage(i);
+        btn.onclick = () => {
+            document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
+            btn.classList.add("active");
+            document.getElementById(`page-${i}`).classList.add("active");
+        };
         tEl.appendChild(btn);
-
         const pg = document.createElement("div");
         pg.className = "page" + (i===0?" active":"");
         pg.id = `page-${i}`;
@@ -164,12 +169,10 @@ function renderUI() {
         }
         pEl.appendChild(pg);
     }
-
     masterList.forEach(t => {
         const m = tickerMeta[t];
         const col = document.getElementById(`col-${m.pIdx}-${m.cIdx}`);
         if (!col) return;
-        
         if (m.showH) {
             const g = document.createElement("div");
             g.className = "group"; g.textContent = m.group;
@@ -184,17 +187,9 @@ function renderUI() {
             <div class="cell-price">...</div>
             <div class="cell-chg">...</div>
             <div class="cell-pct">...</div>
-            <div class="cell-age" id="row-${safeId}-age"></div>`;
+            <div class="cell-age" id="age-${safeId}"></div>`;
         col.appendChild(r);
     });
-}
-
-function switchPage(idx) {
-    document.querySelectorAll(".tab, .page").forEach(el => el.classList.remove("active"));
-    const tabs = document.querySelectorAll(".tab");
-    if(tabs[idx]) tabs[idx].classList.add("active");
-    const pg = document.getElementById(`page-${idx}`);
-    if(pg) pg.classList.add("active");
 }
 
 async function rollingLoop() {
@@ -204,12 +199,11 @@ async function rollingLoop() {
         const safeId = t.replace(/[^a-zA-Z0-9]/g, '-');
         document.getElementById("status").textContent = `FETCH: ${t}`;
         document.getElementById("counter").textContent = `${i+1}/${masterList.length}`;
-        
         try {
             const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${t}&token=${API_KEY}`);
             if (r.status === 429) { await new Promise(ok => setTimeout(ok, 3000)); continue; }
             const d = await r.json();
-            if (d.c) {
+            if (d.c && d.c !== 0) {
                 const up = d.d >= 0;
                 quoteStore[t] = { ts: Date.now() };
                 const row = document.getElementById(`row-${safeId}`);
@@ -229,8 +223,8 @@ async function rollingLoop() {
 document.addEventListener("keydown", e => {
     const tabs = document.querySelectorAll(".tab");
     let cur = [...tabs].findIndex(t => t.classList.contains("active"));
-    if (e.key === "ArrowRight") { cur = (cur + 1) % numPages; switchPage(cur); }
-    if (e.key === "ArrowLeft") { cur = (cur - 1 + numPages) % numPages; switchPage(cur); }
+    if (e.key === "ArrowRight") { cur = (cur + 1) % numPages; tabs[cur].click(); }
+    if (e.key === "ArrowLeft") { cur = (cur - 1 + numPages) % numPages; tabs[cur].click(); }
 });
 
 init();
