@@ -33,6 +33,7 @@ body {
     padding: 4px 12px;
     background: #111;
     border-bottom: 1px solid #333;
+    align-items: center;
 }
 .tab {
     padding: 3px 14px;
@@ -47,6 +48,35 @@ body {
 }
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
+
+/* Search bar */
+.search-wrap {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.search-wrap input {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #ffb300;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 3px 8px;
+    width: 180px;
+    outline: none;
+}
+.search-wrap input:focus { border-color: orange; }
+.search-wrap input::placeholder { color: #555; }
+.search-info {
+    color: #888;
+    font-size: 10px;
+    white-space: nowrap;
+    min-width: 50px;
+}
+/* Highlight for search matches */
+.slot-data.search-match { background: rgba(255,165,0,.12); }
+.slot-data.search-current { background: rgba(255,165,0,.35); }
 #pages {
     flex: 1 1 0;
     min-height: 0;
@@ -136,7 +166,12 @@ body {
     <div class="header-title">◆ BLOOMBERG LITE</div>
     <div class="header-time" id="clock"></div>
 </div>
-<div class="tabs" id="tabs"></div>
+<div class="tabs" id="tabs">
+    <div class="search-wrap">
+        <input type="text" id="searchInput" placeholder="Search ticker or name…" autocomplete="off" spellcheck="false">
+        <span class="search-info" id="searchInfo"></span>
+    </div>
+</div>
 <div id="pages"></div>
 <div class="statusbar">
     <span id="status">Loading…</span>
@@ -307,14 +342,16 @@ function doLayout(unique) {
 function buildChrome() {
     const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
-    tabsEl.innerHTML = "";
+    // Remove only tab buttons, keep the search-wrap
+    tabsEl.querySelectorAll(".tab").forEach(t => t.remove());
     pagesEl.innerHTML = "";
+    const searchWrap = tabsEl.querySelector(".search-wrap");
     for (let i = 0; i < numPages; i++) {
         const tab = document.createElement("button");
         tab.className = "tab" + (i === 0 ? " active" : "");
         tab.textContent = `PAGE ${i+1}`;
         tab.onclick = () => switchPage(i);
-        tabsEl.appendChild(tab);
+        tabsEl.insertBefore(tab, searchWrap);
         const page = document.createElement("div");
         page.className = "page" + (i === 0 ? " active" : "");
         page.id = `page-${i}`;
@@ -389,6 +426,8 @@ function switchPage(idx) {
 }
 
 document.addEventListener("keydown", e => {
+    // Don't switch pages if typing in search
+    if (document.activeElement && document.activeElement.id === "searchInput") return;
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const tabs = document.querySelectorAll(".tab");
         let cur = [...tabs].findIndex(t => t.classList.contains("active"));
@@ -465,6 +504,102 @@ function fullRebuild(unique) {
         if (quoteStore[masterList[i]]) renderTicker(i);
     }
 }
+
+/* ── Search ── */
+let searchMatches = [];  // array of slot indices that match
+let searchCursor = -1;   // current match index
+
+function clearSearch() {
+    document.querySelectorAll(".search-match, .search-current").forEach(el => {
+        el.classList.remove("search-match", "search-current");
+    });
+    searchMatches = [];
+    searchCursor = -1;
+    document.getElementById("searchInfo").textContent = "";
+}
+
+function doSearch(query) {
+    clearSearch();
+    if (!query) return;
+    const q = query.toLowerCase();
+
+    // Find all matching slot indices
+    for (let i = 0; i < masterList.length; i++) {
+        const meta = tickerMeta[i];
+        if (!meta) continue;
+        const ticker = meta.ticker.toLowerCase();
+        const name = meta.name.toLowerCase();
+        if (ticker.includes(q) || name.includes(q)) {
+            searchMatches.push(i);
+            const el = document.querySelector(`[data-slot-id="${i}"]`);
+            if (el) el.classList.add("search-match");
+        }
+    }
+
+    if (searchMatches.length > 0) {
+        searchCursor = 0;
+        highlightCurrent();
+    }
+    updateSearchInfo();
+}
+
+function highlightCurrent() {
+    // Remove previous current highlight
+    document.querySelectorAll(".search-current").forEach(el => el.classList.remove("search-current"));
+    if (searchCursor < 0 || searchCursor >= searchMatches.length) return;
+
+    const idx = searchMatches[searchCursor];
+    const meta = tickerMeta[idx];
+    if (!meta) return;
+
+    // Switch to the correct page
+    switchPage(meta.pageIdx);
+
+    // Highlight current match
+    const el = document.querySelector(`[data-slot-id="${idx}"]`);
+    if (el) el.classList.add("search-current");
+}
+
+function updateSearchInfo() {
+    const info = document.getElementById("searchInfo");
+    if (searchMatches.length === 0) {
+        const q = document.getElementById("searchInput").value;
+        info.textContent = q ? "0 results" : "";
+    } else {
+        info.textContent = `${searchCursor + 1} / ${searchMatches.length}`;
+    }
+}
+
+function nextMatch() {
+    if (searchMatches.length === 0) return;
+    searchCursor = (searchCursor + 1) % searchMatches.length;
+    highlightCurrent();
+    updateSearchInfo();
+}
+
+function prevMatch() {
+    if (searchMatches.length === 0) return;
+    searchCursor = (searchCursor - 1 + searchMatches.length) % searchMatches.length;
+    highlightCurrent();
+    updateSearchInfo();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const input = document.getElementById("searchInput");
+    input.addEventListener("input", () => doSearch(input.value.trim()));
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (e.shiftKey) prevMatch();
+            else nextMatch();
+        }
+        if (e.key === "Escape") {
+            input.value = "";
+            clearSearch();
+            input.blur();
+        }
+    });
+});
 
 async function init() {
     setStatus("Reading sheet…");
