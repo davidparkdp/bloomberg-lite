@@ -195,15 +195,12 @@ let slotsPerCol = 0;
 
 async function loadUniqueItems() {
     const rows = await loadCSV(SHEET_URL);
-    const maxCols = Math.max(...rows.map(r => r.length));
     const allItems = [];
-    for (let base = 0; base + 1 < maxCols; base += 3) {
-        rows.forEach(row => {
-            const group  = row[base]   || "";
-            const ticker = row[base+1] || "";
-            const name   = row[base+2] || "";
-            if (group && ticker) allItems.push({ group, ticker, name });
-        });
+    for (let i = 0; i < rows.length; i++) {
+        const group  = (rows[i][0] || "").trim();
+        const ticker = (rows[i][1] || "").trim();
+        const name   = (rows[i][2] || "").trim();
+        if (group && ticker) allItems.push({ group, ticker, name });
     }
     return allItems;
 }
