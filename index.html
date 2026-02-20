@@ -586,6 +586,16 @@ function prevMatch() {
 
 document.addEventListener("DOMContentLoaded", () => {
     const input = document.getElementById("searchInput");
+
+    // Intercept Ctrl+F / Cmd+F to use custom search
+    document.addEventListener("keydown", e => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+            e.preventDefault();
+            input.focus();
+            input.select();
+        }
+    });
+
     input.addEventListener("input", () => doSearch(input.value.trim()));
     input.addEventListener("keydown", e => {
         if (e.key === "Enter") {
