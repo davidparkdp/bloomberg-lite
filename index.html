@@ -49,7 +49,7 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-/* Search bar */
+/* Search bar and sort */
 .search-wrap {
     margin-left: auto;
     display: flex;
@@ -74,6 +74,18 @@ body {
     white-space: nowrap;
     min-width: 50px;
 }
+.sort-select {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    color: #888;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 3px 4px;
+    outline: none;
+    cursor: pointer;
+}
+.sort-select:focus { border-color: orange; }
+.sort-select option { background: #1a1a1a; color: #ccc; }
 /* Highlight for search matches */
 .slot-data.search-match { background: rgba(255,165,0,.12); }
 .slot-data.search-current { background: rgba(255,165,0,.35); }
@@ -168,6 +180,11 @@ body {
 </div>
 <div class="tabs" id="tabs">
     <div class="search-wrap">
+        <select id="sortSelect" class="sort-select">
+            <option value="manual">Sort: Manual</option>
+            <option value="alpha">Sort: A→Z</option>
+            <option value="pct">Sort: % Chg</option>
+        </select>
         <input type="text" id="searchInput" placeholder="Search ticker or name…" autocomplete="off" spellcheck="false">
         <span class="search-info" id="searchInfo"></span>
     </div>
@@ -227,6 +244,8 @@ const tickerMeta = {};
 let masterList = [];
 let numPages = 0;
 let slotsPerCol = 0;
+let originalItems = [];  // preserved original order from CSV
+let currentSort = "manual";
 
 async function loadUniqueItems() {
     const rows = await loadCSV(SHEET_URL);
@@ -238,6 +257,46 @@ async function loadUniqueItems() {
         if (group && ticker) allItems.push({ group, ticker, name });
     }
     return allItems;
+}
+
+/*
+ * Sort items within each group, preserving group order.
+ * Returns a new array (does not mutate original).
+ */
+function sortItems(items, mode) {
+    if (mode === "manual") return [...items];
+
+    // Split into groups preserving order of first appearance
+    const groupOrder = [];
+    const groupMap = {};
+    for (const item of items) {
+        if (!groupMap[item.group]) {
+            groupMap[item.group] = [];
+            groupOrder.push(item.group);
+        }
+        groupMap[item.group].push({ ...item });
+    }
+
+    // Sort within each group
+    for (const g of groupOrder) {
+        const arr = groupMap[g];
+        if (mode === "alpha") {
+            arr.sort((a, b) => a.ticker.localeCompare(b.ticker));
+        } else if (mode === "pct") {
+            arr.sort((a, b) => {
+                const apct = quoteStore[a.ticker]?.dp ?? -9999;
+                const bpct = quoteStore[b.ticker]?.dp ?? -9999;
+                return bpct - apct; // highest % change first
+            });
+        }
+    }
+
+    // Reassemble
+    const result = [];
+    for (const g of groupOrder) {
+        result.push(...groupMap[g]);
+    }
+    return result;
 }
 
 /*
@@ -496,13 +555,17 @@ async function rollingLoop() {
     }
 }
 
-function fullRebuild(unique) {
-    const layoutColumns = doLayout(unique);
+function fullRebuild(items) {
+    const sorted = sortItems(items, currentSort);
+    const layoutColumns = doLayout(sorted);
     buildChrome();
     renderAllSlots(layoutColumns);
     for (let i = 0; i < masterList.length; i++) {
         if (quoteStore[masterList[i]]) renderTicker(i);
     }
+    // Re-apply search if active
+    const q = document.getElementById("searchInput")?.value?.trim();
+    if (q) doSearch(q);
 }
 
 /* ── Search ── */
@@ -618,13 +681,13 @@ async function init() {
     tempPage.style.visibility = "hidden";
     document.getElementById("pages").appendChild(tempPage);
 
-    const unique = await loadUniqueItems();
+    originalItems = await loadUniqueItems();
 
     const colH = tempPage.offsetHeight;
     document.getElementById("pages").removeChild(tempPage);
     slotsPerCol = Math.max(10, Math.floor(colH / 21));
 
-    fullRebuild(unique);
+    fullRebuild(originalItems);
 
     requestAnimationFrame(() => requestAnimationFrame(() => {
         const col0 = document.getElementById("col-0-0");
@@ -632,10 +695,21 @@ async function init() {
             const sample = col0.querySelector(".slot");
             if (sample) {
                 slotsPerCol = Math.floor(col0.offsetHeight / sample.offsetHeight);
-                fullRebuild(unique);
+                fullRebuild(originalItems);
             }
         }
     }));
+
+    // Sort dropdown
+    document.getElementById("sortSelect").addEventListener("change", e => {
+        currentSort = e.target.value;
+        fullRebuild(originalItems);
+    });
+
+    // Periodic re-sort for % change mode (every 30s as new prices arrive)
+    setInterval(() => {
+        if (currentSort === "pct") fullRebuild(originalItems);
+    }, 30000);
 
     rollingLoop();
 }
