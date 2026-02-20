@@ -184,6 +184,7 @@ body {
             <option value="manual">Sort: Manual</option>
             <option value="alpha">Sort: A→Z</option>
             <option value="pct">Sort: % Chg</option>
+            <option value="pct-ex">Sort: % Chg (ex L/S)</option>
         </select>
         <input type="text" id="searchInput" placeholder="Search ticker or name…" autocomplete="off" spellcheck="false">
         <span class="search-info" id="searchInfo"></span>
@@ -280,14 +281,24 @@ function sortItems(items, mode) {
     // Sort within each group
     for (const g of groupOrder) {
         const arr = groupMap[g];
+        const gUpper = g.toUpperCase();
         if (mode === "alpha") {
             arr.sort((a, b) => a.ticker.localeCompare(b.ticker));
         } else if (mode === "pct") {
             arr.sort((a, b) => {
                 const apct = quoteStore[a.ticker]?.dp ?? -9999;
                 const bpct = quoteStore[b.ticker]?.dp ?? -9999;
-                return bpct - apct; // highest % change first
+                return bpct - apct;
             });
+        } else if (mode === "pct-ex") {
+            // Sort by % change but leave LONG and SHORT as manual
+            if (gUpper !== "LONG" && gUpper !== "SHORT") {
+                arr.sort((a, b) => {
+                    const apct = quoteStore[a.ticker]?.dp ?? -9999;
+                    const bpct = quoteStore[b.ticker]?.dp ?? -9999;
+                    return bpct - apct;
+                });
+            }
         }
     }
 
@@ -706,9 +717,9 @@ async function init() {
         fullRebuild(originalItems);
     });
 
-    // Periodic re-sort for % change mode (every 30s as new prices arrive)
+    // Periodic re-sort for % change modes (every 30s as new prices arrive)
     setInterval(() => {
-        if (currentSort === "pct") fullRebuild(originalItems);
+        if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild(originalItems);
     }, 30000);
 
     rollingLoop();
