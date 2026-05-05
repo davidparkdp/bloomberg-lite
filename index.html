@@ -49,7 +49,6 @@ body {
 .tab.active { border-color: orange; color: orange; background: rgba(255,165,0,.08); }
 .tab:hover:not(.active) { color: #ccc; border-color: #666; }
 
-/* Search bar and sort */
 .search-wrap {
     margin-left: auto;
     display: flex;
@@ -86,7 +85,6 @@ body {
 }
 .sort-select:focus { border-color: orange; }
 .sort-select option { background: #1a1a1a; color: #ccc; }
-/* Highlight for search matches */
 .slot-data.search-match { background: rgba(255,165,0,.12); }
 .slot-data.search-current { background: rgba(255,165,0,.35); }
 #pages {
@@ -123,13 +121,11 @@ body {
 .statusbar span { color: #555; }
 .status-warn { color: #ffaa00 !important; }
 
-/* Every element in a column is a .slot — fixed height */
 .slot {
     height: 21px;
     line-height: 21px;
     overflow: hidden;
 }
-/* Group heading: same grid as data, text spans ticker+name area */
 .slot-heading {
     color: #ddd;
     font-size: 13px;
@@ -138,17 +134,15 @@ body {
     text-transform: uppercase;
     white-space: nowrap;
     display: grid;
-    grid-template-columns: 48px 82px 66px 58px 56px 20px;
+    grid-template-columns: var(--slot-grid);
     align-items: center;
     gap: 1px;
     border-bottom: 1px solid #0f0f0f;
 }
-/* Empty spacer */
 .slot-empty {}
-/* Data row */
 .slot-data {
     display: grid;
-    grid-template-columns: 48px 82px 66px 58px 56px 20px;
+    grid-template-columns: var(--slot-grid);
     align-items: center;
     gap: 1px;
     border-bottom: 1px solid #0f0f0f;
@@ -199,8 +193,31 @@ body {
 const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
 const PAUSE_ON_429  = 4000;
-const NUM_COLS      = 5;
 const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
+
+// ── Responsive layout config ──────────────────────────────────────────────────
+// MIN_COL_WIDTH: the narrowest a column should be before we drop one.
+// Tune this to taste — 260px keeps all data cells readable without wrapping.
+const MIN_COL_WIDTH = 260;
+
+function getNumCols() {
+    const w = document.getElementById("pages").offsetWidth || window.innerWidth;
+    return Math.max(1, Math.floor(w / MIN_COL_WIDTH));
+}
+
+// CSS grid template changes with column count:
+// narrow (1–2 cols): shrink the name cell slightly
+// wide (3+ cols): original proportions
+function getSlotGrid(numCols) {
+    if (numCols <= 2) return "48px 72px 62px 56px 54px 18px";   // tighter name
+    return "48px 82px 66px 58px 56px 20px";                     // original
+}
+
+function applySlotGrid(numCols) {
+    const grid = getSlotGrid(numCols);
+    document.documentElement.style.setProperty("--slot-grid", grid);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function parseCSV(text) {
     return text.trim().split("\n").map(line => {
@@ -245,7 +262,8 @@ const tickerMeta = {};
 let masterList = [];
 let numPages = 0;
 let slotsPerCol = 0;
-let originalItems = [];  // preserved original order from CSV
+let numCols = 5;          // will be set dynamically
+let originalItems = [];
 let currentSort = "manual";
 
 async function loadUniqueItems() {
@@ -260,60 +278,32 @@ async function loadUniqueItems() {
     return allItems;
 }
 
-/*
- * Sort items within each group, preserving group order.
- * Returns a new array (does not mutate original).
- */
 function sortItems(items, mode) {
     if (mode === "manual") return [...items];
-
-    // Split into groups preserving order of first appearance
     const groupOrder = [];
     const groupMap = {};
     for (const item of items) {
-        if (!groupMap[item.group]) {
-            groupMap[item.group] = [];
-            groupOrder.push(item.group);
-        }
+        if (!groupMap[item.group]) { groupMap[item.group] = []; groupOrder.push(item.group); }
         groupMap[item.group].push({ ...item });
     }
-
-    // Sort within each group
     for (const g of groupOrder) {
         const arr = groupMap[g];
         const gUpper = g.toUpperCase();
         if (mode === "alpha") {
             arr.sort((a, b) => a.ticker.localeCompare(b.ticker));
         } else if (mode === "pct") {
-            arr.sort((a, b) => {
-                const apct = quoteStore[a.ticker]?.dp ?? -9999;
-                const bpct = quoteStore[b.ticker]?.dp ?? -9999;
-                return bpct - apct;
-            });
+            arr.sort((a, b) => (quoteStore[b.ticker]?.dp ?? -9999) - (quoteStore[a.ticker]?.dp ?? -9999));
         } else if (mode === "pct-ex") {
-            // Sort by % change but leave LONG and SHORT as manual
             if (gUpper !== "LONG" && gUpper !== "SHORT") {
-                arr.sort((a, b) => {
-                    const apct = quoteStore[a.ticker]?.dp ?? -9999;
-                    const bpct = quoteStore[b.ticker]?.dp ?? -9999;
-                    return bpct - apct;
-                });
+                arr.sort((a, b) => (quoteStore[b.ticker]?.dp ?? -9999) - (quoteStore[a.ticker]?.dp ?? -9999));
             }
         }
     }
-
-    // Reassemble
     const result = [];
-    for (const g of groupOrder) {
-        result.push(...groupMap[g]);
-    }
+    for (const g of groupOrder) result.push(...groupMap[g]);
     return result;
 }
 
-/*
- * Build slot stream: headings inserted before first ticker of each group
- * (first occurrence only). Headings are just another slot in the sequence.
- */
 function buildSlotStream(unique) {
     const slots = [];
     const groupSeen = new Set();
@@ -327,92 +317,60 @@ function buildSlotStream(unique) {
     return slots;
 }
 
-/*
- * Pack slots into fixed-size columns.
- * Headings flow naturally wherever they land — multiple per column is fine.
- * Only rule: row 0 of every column must be heading or empty spacer.
- * Also: don't let a heading be the very last row of a column (orphaned).
- */
 function packIntoColumns(slots) {
     const columns = [];
     let col = [];
     let si = 0;
-
     while (si < slots.length) {
         const posInCol = col.length;
-
-        // Column is full — finalize and start new
-        if (posInCol >= slotsPerCol) {
-            columns.push(col);
-            col = [];
-            continue; // re-process current slot in new column
-        }
-
-        // Don't orphan a heading as the last row of a column
+        if (posInCol >= slotsPerCol) { columns.push(col); col = []; continue; }
         if (slots[si].type === "heading" && posInCol === slotsPerCol - 1) {
             col.push({ type: "empty" });
             columns.push(col);
             col = [];
-            continue; // heading will go into next column
+            continue;
         }
-
-        // Normal: add the slot
         col.push(slots[si]);
         si++;
     }
-
-    // Pad last column
     while (col.length < slotsPerCol) col.push({ type: "empty" });
     if (col.length > 0) columns.push(col);
-
     return columns;
 }
 
 function doLayout(unique) {
     masterList = [];
     Object.keys(tickerMeta).forEach(k => delete tickerMeta[k]);
-
     const slots = buildSlotStream(unique);
     const columns = packIntoColumns(slots);
-
-    numPages = Math.ceil(columns.length / NUM_COLS) || 1;
-
+    numPages = Math.ceil(columns.length / numCols) || 1;
     const layoutColumns = [];
     for (let p = 0; p < numPages; p++) {
         layoutColumns[p] = [];
-        for (let c = 0; c < NUM_COLS; c++) {
-            const gi = p * NUM_COLS + c;
+        for (let c = 0; c < numCols; c++) {
+            const gi = p * numCols + c;
             layoutColumns[p][c] = gi < columns.length
                 ? columns[gi]
                 : new Array(slotsPerCol).fill({ type: "empty" });
         }
     }
-
     for (let p = 0; p < numPages; p++) {
-        for (let c = 0; c < NUM_COLS; c++) {
+        for (let c = 0; c < numCols; c++) {
             for (const slot of layoutColumns[p][c]) {
                 if (slot.type === "data") {
                     const idx = masterList.length;
                     masterList.push(slot.ticker);
-                    tickerMeta[idx] = {
-                        group: slot.group,
-                        name: slot.name,
-                        ticker: slot.ticker,
-                        pageIdx: p,
-                        colIdx: c
-                    };
+                    tickerMeta[idx] = { group: slot.group, name: slot.name, ticker: slot.ticker, pageIdx: p, colIdx: c };
                 }
             }
         }
     }
-
     return layoutColumns;
 }
 
 function buildChrome() {
     const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
-    // Remove only tab buttons, keep the search-wrap
     tabsEl.querySelectorAll(".tab").forEach(t => t.remove());
     pagesEl.innerHTML = "";
     const searchWrap = tabsEl.querySelector(".search-wrap");
@@ -425,7 +383,7 @@ function buildChrome() {
         const page = document.createElement("div");
         page.className = "page" + (i === 0 ? " active" : "");
         page.id = `page-${i}`;
-        for (let c = 0; c < NUM_COLS; c++) {
+        for (let c = 0; c < numCols; c++) {
             const col = document.createElement("div");
             col.className = "col";
             col.id = `col-${i}-${c}`;
@@ -496,7 +454,6 @@ function switchPage(idx) {
 }
 
 document.addEventListener("keydown", e => {
-    // Don't switch pages if typing in search
     if (document.activeElement && document.activeElement.id === "searchInput") return;
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
         const tabs = document.querySelectorAll(".tab");
@@ -538,7 +495,6 @@ async function fetchQuote(ticker) {
             const data = await res.json();
             if (data && data.c != null && data.c !== 0) {
                 quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
-                // Update all slots that show this ticker
                 for (let i = 0; i < masterList.length; i++) {
                     if (masterList[i] === ticker) renderTicker(i);
                 }
@@ -549,7 +505,6 @@ async function fetchQuote(ticker) {
 }
 
 async function rollingLoop() {
-    // Build a deduplicated fetch list (unique tickers only, in order of first appearance)
     const fetchList = [];
     const seen = new Set();
     for (const t of masterList) {
@@ -567,6 +522,10 @@ async function rollingLoop() {
 }
 
 function fullRebuild(items) {
+    // Recalculate responsive dimensions every rebuild
+    numCols = getNumCols();
+    applySlotGrid(numCols);
+
     const sorted = sortItems(items, currentSort);
     const layoutColumns = doLayout(sorted);
     buildChrome();
@@ -574,14 +533,13 @@ function fullRebuild(items) {
     for (let i = 0; i < masterList.length; i++) {
         if (quoteStore[masterList[i]]) renderTicker(i);
     }
-    // Re-apply search if active
     const q = document.getElementById("searchInput")?.value?.trim();
     if (q) doSearch(q);
 }
 
 /* ── Search ── */
-let searchMatches = [];  // array of slot indices that match
-let searchCursor = -1;   // current match index
+let searchMatches = [];
+let searchCursor = -1;
 
 function clearSearch() {
     document.querySelectorAll(".search-match, .search-current").forEach(el => {
@@ -596,40 +554,26 @@ function doSearch(query) {
     clearSearch();
     if (!query) return;
     const q = query.toLowerCase();
-
-    // Find all matching slot indices
     for (let i = 0; i < masterList.length; i++) {
         const meta = tickerMeta[i];
         if (!meta) continue;
-        const ticker = meta.ticker.toLowerCase();
-        const name = meta.name.toLowerCase();
-        if (ticker.includes(q) || name.includes(q)) {
+        if (meta.ticker.toLowerCase().includes(q) || meta.name.toLowerCase().includes(q)) {
             searchMatches.push(i);
             const el = document.querySelector(`[data-slot-id="${i}"]`);
             if (el) el.classList.add("search-match");
         }
     }
-
-    if (searchMatches.length > 0) {
-        searchCursor = 0;
-        highlightCurrent();
-    }
+    if (searchMatches.length > 0) { searchCursor = 0; highlightCurrent(); }
     updateSearchInfo();
 }
 
 function highlightCurrent() {
-    // Remove previous current highlight
     document.querySelectorAll(".search-current").forEach(el => el.classList.remove("search-current"));
     if (searchCursor < 0 || searchCursor >= searchMatches.length) return;
-
     const idx = searchMatches[searchCursor];
     const meta = tickerMeta[idx];
     if (!meta) return;
-
-    // Switch to the correct page
     switchPage(meta.pageIdx);
-
-    // Highlight current match
     const el = document.querySelector(`[data-slot-id="${idx}"]`);
     if (el) el.classList.add("search-current");
 }
@@ -647,42 +591,49 @@ function updateSearchInfo() {
 function nextMatch() {
     if (searchMatches.length === 0) return;
     searchCursor = (searchCursor + 1) % searchMatches.length;
-    highlightCurrent();
-    updateSearchInfo();
+    highlightCurrent(); updateSearchInfo();
 }
-
 function prevMatch() {
     if (searchMatches.length === 0) return;
     searchCursor = (searchCursor - 1 + searchMatches.length) % searchMatches.length;
-    highlightCurrent();
-    updateSearchInfo();
+    highlightCurrent(); updateSearchInfo();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     const input = document.getElementById("searchInput");
-
-    // Intercept Ctrl+F / Cmd+F to use custom search
     document.addEventListener("keydown", e => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
-            e.preventDefault();
-            input.focus();
-            input.select();
-        }
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") { e.preventDefault(); input.focus(); input.select(); }
     });
-
     input.addEventListener("input", () => doSearch(input.value.trim()));
     input.addEventListener("keydown", e => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            if (e.shiftKey) prevMatch();
-            else nextMatch();
-        }
-        if (e.key === "Escape") {
-            input.value = "";
-            clearSearch();
-            input.blur();
-        }
+        if (e.key === "Enter") { e.preventDefault(); if (e.shiftKey) prevMatch(); else nextMatch(); }
+        if (e.key === "Escape") { input.value = ""; clearSearch(); input.blur(); }
     });
+});
+
+// ── Resize observer: rebuild layout when window size changes significantly ───
+let resizeTimer = null;
+let lastNumCols = 0;
+let lastSlotsPerCol = 0;
+
+const resizeObserver = new ResizeObserver(() => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (originalItems.length === 0) return;
+
+        const newNumCols = getNumCols();
+        const pagesEl = document.getElementById("pages");
+        const colH = pagesEl.offsetHeight;
+        const newSlotsPerCol = Math.max(10, Math.floor(colH / 21));
+
+        // Only rebuild if layout actually needs to change
+        if (newNumCols !== lastNumCols || newSlotsPerCol !== lastSlotsPerCol) {
+            slotsPerCol = newSlotsPerCol;
+            lastNumCols = newNumCols;
+            lastSlotsPerCol = newSlotsPerCol;
+            fullRebuild(originalItems);
+        }
+    }, 150); // debounce — don't thrash during drag-resize
 });
 
 async function init() {
@@ -698,6 +649,10 @@ async function init() {
     document.getElementById("pages").removeChild(tempPage);
     slotsPerCol = Math.max(10, Math.floor(colH / 21));
 
+    // Set initial values so resize observer knows the baseline
+    lastNumCols = getNumCols();
+    lastSlotsPerCol = slotsPerCol;
+
     fullRebuild(originalItems);
 
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -706,18 +661,19 @@ async function init() {
             const sample = col0.querySelector(".slot");
             if (sample) {
                 slotsPerCol = Math.floor(col0.offsetHeight / sample.offsetHeight);
+                lastSlotsPerCol = slotsPerCol;
                 fullRebuild(originalItems);
             }
         }
+        // Start watching for resizes after initial layout is stable
+        resizeObserver.observe(document.getElementById("pages"));
     }));
 
-    // Sort dropdown
     document.getElementById("sortSelect").addEventListener("change", e => {
         currentSort = e.target.value;
         fullRebuild(originalItems);
     });
 
-    // Periodic re-sort for % change modes (every 30s as new prices arrive)
     setInterval(() => {
         if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild(originalItems);
     }, 30000);
