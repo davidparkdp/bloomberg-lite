@@ -14,6 +14,7 @@ body {
     color: #00ffcc;
     font-family: monospace;
     font-size: 13px;
+    overflow: hidden; /* Prevent body scrollbars during resize */
 }
 .header {
     flex-shrink: 0;
@@ -29,6 +30,7 @@ body {
 .tabs {
     flex-shrink: 0;
     display: flex;
+    flex-wrap: wrap; /* Allow tabs to wrap if many pages exist */
     gap: 2px;
     padding: 4px 12px;
     background: #111;
@@ -83,10 +85,7 @@ body {
     outline: none;
     cursor: pointer;
 }
-.sort-select:focus { border-color: orange; }
-.sort-select option { background: #1a1a1a; color: #ccc; }
-.slot-data.search-match { background: rgba(255,165,0,.12); }
-.slot-data.search-current { background: rgba(255,165,0,.35); }
+
 #pages {
     flex: 1 1 0;
     min-height: 0;
@@ -101,13 +100,13 @@ body {
 .page.active { display: flex; }
 .col {
     flex: 1;
-    min-width: 0;
+    min-width: 330px; /* Minimum width to prevent row squishing */
     overflow: hidden;
     padding: 0 3px;
     border-right: 1px solid #1a1a1a;
 }
-.col:first-child { padding-left: 0; }
-.col:last-child  { border-right: none; padding-right: 0; }
+.col:last-child { border-right: none; }
+
 .statusbar {
     flex-shrink: 0;
     background: #111;
@@ -118,31 +117,23 @@ body {
     display: flex;
     gap: 16px;
 }
-.statusbar span { color: #555; }
-.status-warn { color: #ffaa00 !important; }
 
-.slot {
-    height: 21px;
-    line-height: 21px;
-    overflow: hidden;
-}
+.slot { height: 21px; line-height: 21px; overflow: hidden; }
 .slot-heading {
     color: #ddd;
     font-size: 13px;
-    font-family: monospace;
     letter-spacing: 1px;
     text-transform: uppercase;
     white-space: nowrap;
     display: grid;
-    grid-template-columns: var(--slot-grid);
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
     align-items: center;
     gap: 1px;
     border-bottom: 1px solid #0f0f0f;
 }
-.slot-empty {}
 .slot-data {
     display: grid;
-    grid-template-columns: var(--slot-grid);
+    grid-template-columns: 48px 82px 66px 58px 56px 20px;
     align-items: center;
     gap: 1px;
     border-bottom: 1px solid #0f0f0f;
@@ -154,17 +145,13 @@ body {
     text-align: left; color: #ffb300; font-size: 11px;
     padding-right: 3px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap;
-    cursor: default; opacity: 0.85;
 }
-.cell-price { text-align: right; }
-.cell-chg   { text-align: right; }
-.cell-pct   { text-align: right; }
-.cell-age   { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
+.cell-price, .cell-chg, .cell-pct { text-align: right; }
+.cell-age { text-align: right; font-size: 9px; color: #ffb300 !important; opacity: 0.6; }
 .green { color: #00e676; }
 .red   { color: #ff5252; }
-.slot-data.skeleton .cell-price,
-.slot-data.skeleton .cell-chg,
-.slot-data.skeleton .cell-pct { color: #222; }
+.slot-data.search-match { background: rgba(255,165,0,.12); }
+.slot-data.search-current { background: rgba(255,165,0,.35); }
 </style>
 </head>
 <body>
@@ -180,7 +167,7 @@ body {
             <option value="pct">Sort: % Chg</option>
             <option value="pct-ex">Sort: % Chg (ex L/S)</option>
         </select>
-        <input type="text" id="searchInput" placeholder="Search ticker or name…" autocomplete="off" spellcheck="false">
+        <input type="text" id="searchInput" placeholder="Search ticker or name…" autocomplete="off">
         <span class="search-info" id="searchInfo"></span>
     </div>
 </div>
@@ -189,57 +176,30 @@ body {
     <span id="status">Loading…</span>
     <span id="counter"></span>
 </div>
+
 <script>
-const API_KEY       = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
+const API_KEY = "d6atqi1r01qnr27isiq0d6atqi1r01qnr27isiqg";
 const CALL_DELAY_MS = 1200;
-const PAUSE_ON_429  = 4000;
-const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
+const PAUSE_ON_429 = 4000;
+const MIN_COL_WIDTH = 330;
+const SLOT_HEIGHT = 21;
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwRZMT27tLH6taYNgIYXFPkLdnjOhv3KqqGJGJY_Dn1SJ6yI4v1jaODaHy33TwbM-L5z14UWF/pub?gid=0&single=true&output=csv";
 
-// ── Responsive layout config ──────────────────────────────────────────────────
-// MIN_COL_WIDTH: the narrowest a column should be before we drop one.
-// Tune this to taste — 260px keeps all data cells readable without wrapping.
-const MIN_COL_WIDTH = 300;
+let currentNumCols = 1;
+let slotsPerCol = 10;
+let originalItems = [];
+let quoteStore = {};
+let tickerMeta = {};
+let masterList = [];
+let numPages = 0;
+let currentSort = "manual";
+let resizeTimeout;
 
-function getNumCols() {
-    const w = document.getElementById("pages").offsetWidth || window.innerWidth;
-    return Math.max(1, Math.floor(w / MIN_COL_WIDTH));
-}
-
-// Use 1fr for the name cell so it takes whatever space remains after
-// the fixed data cells. Fixed cells sum to ~225px; name flexes with the rest.
-// This guarantees ticker + name + price + chg + pct% are always visible.
-function applySlotGrid() {
-    document.documentElement.style.setProperty("--slot-grid", "48px 1fr 62px 58px 56px 18px");
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
-function parseCSV(text) {
-    return text.trim().split("\n").map(line => {
-        const fields = [];
-        let cur = "", inQ = false;
-        for (const ch of line) {
-            if (ch === '"') { inQ = !inQ; }
-            else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
-            else { cur += ch; }
-        }
-        fields.push(cur.trim());
-        return fields;
-    });
-}
-async function loadCSV(url) { return parseCSV(await (await fetch(url)).text()); }
+// Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-function setStatus(msg, warn=false) {
-    const el = document.getElementById("status");
-    el.textContent = msg;
-    el.className = warn ? "status-warn" : "";
-}
-function setCounter(i, n) { document.getElementById("counter").textContent = `${i} / ${n}`; }
 function updateClock() {
     const now = new Date();
-    document.getElementById("clock").textContent =
-        now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})
-        + "  " + now.toLocaleTimeString("en-US",{hour12:false});
+    document.getElementById("clock").textContent = now.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}) + "  " + now.toLocaleTimeString("en-US",{hour12:false});
 }
 setInterval(updateClock, 1000); updateClock();
 
@@ -251,195 +211,146 @@ function ageLabel(ts) {
     return Math.floor(s/3600)+"h";
 }
 
-const quoteStore = {};
-const tickerMeta = {};
-let masterList = [];
-let numPages = 0;
-let slotsPerCol = 0;
-let numCols = 5;          // will be set dynamically
-let originalItems = [];
-let currentSort = "manual";
+async function loadCSV(url) {
+    const text = await (await fetch(url)).text();
+    return text.trim().split("\n").map(line => {
+        const fields = [];
+        let cur = "", inQ = false;
+        for (const ch of line) {
+            if (ch === '"') inQ = !inQ;
+            else if (ch === ',' && !inQ) { fields.push(cur.trim()); cur = ""; }
+            else cur += ch;
+        }
+        fields.push(cur.trim());
+        return fields;
+    });
+}
 
 async function loadUniqueItems() {
     const rows = await loadCSV(SHEET_URL);
-    const allItems = [];
-    for (let i = 0; i < rows.length; i++) {
-        const group  = (rows[i][0] || "").trim();
-        const ticker = (rows[i][1] || "").trim();
-        const name   = (rows[i][2] || "").trim();
-        if (group && ticker) allItems.push({ group, ticker, name });
-    }
-    return allItems;
+    return rows.map(r => ({ group: (r[0]||"").trim(), ticker: (r[1]||"").trim(), name: (r[2]||"").trim() }))
+               .filter(item => item.group && item.ticker);
 }
 
 function sortItems(items, mode) {
     if (mode === "manual") return [...items];
     const groupOrder = [];
     const groupMap = {};
-    for (const item of items) {
+    items.forEach(item => {
         if (!groupMap[item.group]) { groupMap[item.group] = []; groupOrder.push(item.group); }
         groupMap[item.group].push({ ...item });
-    }
-    for (const g of groupOrder) {
+    });
+    groupOrder.forEach(g => {
         const arr = groupMap[g];
-        const gUpper = g.toUpperCase();
-        if (mode === "alpha") {
-            arr.sort((a, b) => a.ticker.localeCompare(b.ticker));
-        } else if (mode === "pct") {
-            arr.sort((a, b) => (quoteStore[b.ticker]?.dp ?? -9999) - (quoteStore[a.ticker]?.dp ?? -9999));
-        } else if (mode === "pct-ex") {
-            if (gUpper !== "LONG" && gUpper !== "SHORT") {
-                arr.sort((a, b) => (quoteStore[b.ticker]?.dp ?? -9999) - (quoteStore[a.ticker]?.dp ?? -9999));
-            }
+        if (mode === "alpha") arr.sort((a,b) => a.ticker.localeCompare(b.ticker));
+        else if (mode === "pct" || (mode === "pct-ex" && !["LONG","SHORT"].includes(g.toUpperCase()))) {
+            arr.sort((a,b) => (quoteStore[b.ticker]?.dp ?? -9999) - (quoteStore[a.ticker]?.dp ?? -9999));
         }
-    }
-    const result = [];
-    for (const g of groupOrder) result.push(...groupMap[g]);
-    return result;
+    });
+    return groupOrder.flatMap(g => groupMap[g]);
 }
 
-function buildSlotStream(unique) {
+function calculateLayoutDimensions() {
+    const pagesEl = document.getElementById("pages");
+    const h = pagesEl.offsetHeight;
+    const w = pagesEl.offsetWidth;
+    
+    slotsPerCol = Math.max(5, Math.floor(h / SLOT_HEIGHT));
+    currentNumCols = Math.max(1, Math.floor(w / MIN_COL_WIDTH));
+}
+
+function fullRebuild() {
+    calculateLayoutDimensions();
+    const sorted = sortItems(originalItems, currentSort);
+    
+    // Create slot stream
     const slots = [];
     const groupSeen = new Set();
-    for (const item of unique) {
+    sorted.forEach(item => {
         if (!groupSeen.has(item.group)) {
             groupSeen.add(item.group);
             slots.push({ type: "heading", text: item.group });
         }
-        slots.push({ type: "data", ticker: item.ticker, name: item.name, group: item.group });
-    }
-    return slots;
-}
+        slots.push({ type: "data", ...item });
+    });
 
-function packIntoColumns(slots) {
+    // Pack columns
     const columns = [];
     let col = [];
-    let si = 0;
-    while (si < slots.length) {
-        const posInCol = col.length;
-        if (posInCol >= slotsPerCol) { columns.push(col); col = []; continue; }
-        if (slots[si].type === "heading" && posInCol === slotsPerCol - 1) {
-            col.push({ type: "empty" });
+    slots.forEach((s, i) => {
+        if (col.length >= slotsPerCol || (s.type === "heading" && col.length === slotsPerCol - 1)) {
+            while (col.length < slotsPerCol) col.push({ type: "empty" });
             columns.push(col);
             col = [];
-            continue;
         }
-        col.push(slots[si]);
-        si++;
-    }
+        col.push(s);
+    });
     while (col.length < slotsPerCol) col.push({ type: "empty" });
-    if (col.length > 0) columns.push(col);
-    return columns;
-}
+    columns.push(col);
 
-function doLayout(unique) {
+    numPages = Math.ceil(columns.length / currentNumCols);
     masterList = [];
-    Object.keys(tickerMeta).forEach(k => delete tickerMeta[k]);
-    const slots = buildSlotStream(unique);
-    const columns = packIntoColumns(slots);
-    numPages = Math.ceil(columns.length / numCols) || 1;
-    const layoutColumns = [];
-    for (let p = 0; p < numPages; p++) {
-        layoutColumns[p] = [];
-        for (let c = 0; c < numCols; c++) {
-            const gi = p * numCols + c;
-            layoutColumns[p][c] = gi < columns.length
-                ? columns[gi]
-                : new Array(slotsPerCol).fill({ type: "empty" });
-        }
-    }
-    for (let p = 0; p < numPages; p++) {
-        for (let c = 0; c < numCols; c++) {
-            for (const slot of layoutColumns[p][c]) {
-                if (slot.type === "data") {
-                    const idx = masterList.length;
-                    masterList.push(slot.ticker);
-                    tickerMeta[idx] = { group: slot.group, name: slot.name, ticker: slot.ticker, pageIdx: p, colIdx: c };
-                }
-            }
-        }
-    }
-    return layoutColumns;
-}
+    tickerMeta = {};
 
-function buildChrome() {
+    // Build DOM
     const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
     tabsEl.querySelectorAll(".tab").forEach(t => t.remove());
     pagesEl.innerHTML = "";
+    
     const searchWrap = tabsEl.querySelector(".search-wrap");
-    for (let i = 0; i < numPages; i++) {
+
+    for (let p = 0; p < numPages; p++) {
         const tab = document.createElement("button");
-        tab.className = "tab" + (i === 0 ? " active" : "");
-        tab.textContent = `PAGE ${i+1}`;
-        tab.onclick = () => switchPage(i);
+        tab.className = "tab" + (p === 0 ? " active" : "");
+        tab.textContent = `PAGE ${p+1}`;
+        tab.onclick = () => switchPage(p);
         tabsEl.insertBefore(tab, searchWrap);
+
         const page = document.createElement("div");
-        page.className = "page" + (i === 0 ? " active" : "");
-        page.id = `page-${i}`;
-        for (let c = 0; c < numCols; c++) {
-            const col = document.createElement("div");
-            col.className = "col";
-            col.id = `col-${i}-${c}`;
-            page.appendChild(col);
+        page.className = "page" + (p === 0 ? " active" : "");
+        page.id = `page-${p}`;
+        
+        for (let c = 0; c < currentNumCols; c++) {
+            const colIdx = p * currentNumCols + c;
+            const colDiv = document.createElement("div");
+            colDiv.className = "col";
+            
+            if (colIdx < columns.length) {
+                columns[colIdx].forEach(slot => {
+                    const el = document.createElement("div");
+                    el.className = "slot";
+                    if (slot.type === "heading") {
+                        el.classList.add("slot-heading");
+                        el.innerHTML = `<div style="grid-column:1/3">${slot.text}</div><div></div><div></div><div></div><div></div>`;
+                    } else if (slot.type === "data") {
+                        const sid = masterList.length;
+                        el.classList.add("slot-data");
+                        el.dataset.slotId = sid;
+                        masterList.push(slot.ticker);
+                        tickerMeta[sid] = { ...slot, pageIdx: p, colIdx: c };
+                        el.innerHTML = `<div class="cell-ticker">${slot.ticker}</div><div class="cell-name">${slot.name}</div><div class="cell-price">—</div><div class="cell-chg"></div><div class="cell-pct"></div><div class="cell-age"></div>`;
+                    } else el.classList.add("slot-empty");
+                    colDiv.appendChild(el);
+                });
+            }
+            page.appendChild(colDiv);
         }
         pagesEl.appendChild(page);
     }
-}
-
-function renderAllSlots(layoutColumns) {
-    let slotIdx = 0;
-    for (let p = 0; p < layoutColumns.length; p++) {
-        for (let c = 0; c < layoutColumns[p].length; c++) {
-            const colEl = document.getElementById(`col-${p}-${c}`);
-            if (!colEl) continue;
-            for (const slot of layoutColumns[p][c]) {
-                const el = document.createElement("div");
-                el.className = "slot";
-                if (slot.type === "heading") {
-                    el.classList.add("slot-heading");
-                    el.innerHTML =
-                        `<div style="grid-column:1/3;letter-spacing:1px;text-transform:uppercase">${slot.text}</div>` +
-                        `<div></div><div></div><div></div><div></div>`;
-                } else if (slot.type === "data") {
-                    el.classList.add("slot-data", "skeleton");
-                    el.dataset.slotId = slotIdx;
-                    el.innerHTML =
-                        `<div class="cell-ticker">${slot.ticker}</div>` +
-                        `<div class="cell-name" title="${slot.name}">${slot.name}</div>` +
-                        `<div class="cell-price">—</div>` +
-                        `<div class="cell-chg"></div>` +
-                        `<div class="cell-pct"></div>` +
-                        `<div class="cell-age"></div>`;
-                    slotIdx++;
-                } else {
-                    el.classList.add("slot-empty");
-                }
-                colEl.appendChild(el);
-            }
-        }
-    }
+    
+    // Restore prices
+    masterList.forEach((ticker, i) => { if (quoteStore[ticker]) renderTicker(i); });
 }
 
 function renderTicker(idx) {
     const meta = tickerMeta[idx];
-    if (!meta) return;
-    const ticker = meta.ticker;
-    const q = quoteStore[ticker];
-    if (!q) return;
-    const colEl = document.getElementById(`col-${meta.pageIdx}-${meta.colIdx}`);
-    if (!colEl) return;
-    const rowEl = colEl.querySelector(`[data-slot-id="${idx}"]`);
-    if (!rowEl) return;
+    const q = quoteStore[meta.ticker];
+    const row = document.querySelector(`[data-slot-id="${idx}"]`);
+    if (!row || !q) return;
     const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
-    rowEl.className = "slot slot-data " + color;
-    rowEl.innerHTML =
-        `<div class="cell-ticker">${ticker}</div>` +
-        `<div class="cell-name" title="${meta.name}">${meta.name}</div>` +
-        `<div class="cell-price">${q.c.toFixed(2)}</div>` +
-        `<div class="cell-chg">${sign}${q.d.toFixed(2)}</div>` +
-        `<div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div>` +
-        `<div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
+    row.className = `slot slot-data ${color}`;
+    row.innerHTML = `<div class="cell-ticker">${meta.ticker}</div><div class="cell-name" title="${meta.name}">${meta.name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
 }
 
 function switchPage(idx) {
@@ -447,233 +358,51 @@ function switchPage(idx) {
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
-document.addEventListener("keydown", e => {
-    if (document.activeElement && document.activeElement.id === "searchInput") return;
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        const tabs = document.querySelectorAll(".tab");
-        let cur = [...tabs].findIndex(t => t.classList.contains("active"));
-        if (e.key === "ArrowRight" && cur < numPages - 1) switchPage(cur + 1);
-        else if (e.key === "ArrowLeft" && cur > 0) switchPage(cur - 1);
-    }
-});
-
-document.addEventListener("dblclick", e => {
-    const cell = e.target.closest(".cell-ticker");
-    const ticker = cell?.textContent?.trim();
-    if (ticker) {
-        window.open(
-            `https://finance.yahoo.com/quote/${encodeURIComponent(ticker.toUpperCase())}/`,
-            "_blank", "noopener,noreferrer"
-        );
-    }
-});
-
-setInterval(() => {
-    for (let i = 0; i < masterList.length; i++) {
-        const meta = tickerMeta[i];
-        const q = quoteStore[masterList[i]];
-        if (!q || !meta) continue;
-        const row = document.querySelector(`#col-${meta.pageIdx}-${meta.colIdx} [data-slot-id="${i}"]`);
-        const age = row?.querySelector(".cell-age");
-        if (age) age.textContent = ageLabel(q.updatedAt);
-    }
-}, 30000);
-
 async function fetchQuote(ticker) {
     const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
-    for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-            const res = await fetch(url);
-            if (res.status === 429) { setStatus("Rate limited — pausing…", true); await sleep(PAUSE_ON_429); continue; }
-            if (!res.ok) return;
-            const data = await res.json();
-            if (data && data.c != null && data.c !== 0) {
-                quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
-                for (let i = 0; i < masterList.length; i++) {
-                    if (masterList[i] === ticker) renderTicker(i);
-                }
-            }
-            return;
-        } catch { await sleep(2000); }
-    }
+    try {
+        const res = await fetch(url);
+        if (res.status === 429) { await sleep(PAUSE_ON_429); return; }
+        const data = await res.json();
+        if (data && data.c) {
+            quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
+            masterList.forEach((t, i) => { if (t === ticker) renderTicker(i); });
+        }
+    } catch (e) {}
 }
 
 async function rollingLoop() {
-    const fetchList = [];
-    const seen = new Set();
-    for (const t of masterList) {
-        if (!seen.has(t)) { seen.add(t); fetchList.push(t); }
-    }
-    let idx = 0;
     while (true) {
-        const t = fetchList[idx];
-        setStatus(`Fetching ${t}…`);
-        setCounter(idx+1, fetchList.length);
-        await fetchQuote(t);
-        await sleep(CALL_DELAY_MS);
-        idx = (idx+1) % fetchList.length;
-    }
-}
-
-function fullRebuild(items) {
-    // Recalculate responsive dimensions every rebuild
-    numCols = getNumCols();
-    applySlotGrid();
-
-    const sorted = sortItems(items, currentSort);
-    const layoutColumns = doLayout(sorted);
-    buildChrome();
-    renderAllSlots(layoutColumns);
-    for (let i = 0; i < masterList.length; i++) {
-        if (quoteStore[masterList[i]]) renderTicker(i);
-    }
-    const q = document.getElementById("searchInput")?.value?.trim();
-    if (q) doSearch(q);
-}
-
-/* ── Search ── */
-let searchMatches = [];
-let searchCursor = -1;
-
-function clearSearch() {
-    document.querySelectorAll(".search-match, .search-current").forEach(el => {
-        el.classList.remove("search-match", "search-current");
-    });
-    searchMatches = [];
-    searchCursor = -1;
-    document.getElementById("searchInfo").textContent = "";
-}
-
-function doSearch(query) {
-    clearSearch();
-    if (!query) return;
-    const q = query.toLowerCase();
-    for (let i = 0; i < masterList.length; i++) {
-        const meta = tickerMeta[i];
-        if (!meta) continue;
-        if (meta.ticker.toLowerCase().includes(q) || meta.name.toLowerCase().includes(q)) {
-            searchMatches.push(i);
-            const el = document.querySelector(`[data-slot-id="${i}"]`);
-            if (el) el.classList.add("search-match");
+        const uniqueTickers = [...new Set(masterList)];
+        for (let i = 0; i < uniqueTickers.length; i++) {
+            const t = uniqueTickers[i];
+            document.getElementById("status").textContent = `Fetching ${t}...`;
+            document.getElementById("counter").textContent = `${i+1} / ${uniqueTickers.length}`;
+            await fetchQuote(t);
+            await sleep(CALL_DELAY_MS);
         }
     }
-    if (searchMatches.length > 0) { searchCursor = 0; highlightCurrent(); }
-    updateSearchInfo();
 }
 
-function highlightCurrent() {
-    document.querySelectorAll(".search-current").forEach(el => el.classList.remove("search-current"));
-    if (searchCursor < 0 || searchCursor >= searchMatches.length) return;
-    const idx = searchMatches[searchCursor];
-    const meta = tickerMeta[idx];
-    if (!meta) return;
-    switchPage(meta.pageIdx);
-    const el = document.querySelector(`[data-slot-id="${idx}"]`);
-    if (el) el.classList.add("search-current");
-}
-
-function updateSearchInfo() {
-    const info = document.getElementById("searchInfo");
-    if (searchMatches.length === 0) {
-        const q = document.getElementById("searchInput").value;
-        info.textContent = q ? "0 results" : "";
-    } else {
-        info.textContent = `${searchCursor + 1} / ${searchMatches.length}`;
-    }
-}
-
-function nextMatch() {
-    if (searchMatches.length === 0) return;
-    searchCursor = (searchCursor + 1) % searchMatches.length;
-    highlightCurrent(); updateSearchInfo();
-}
-function prevMatch() {
-    if (searchMatches.length === 0) return;
-    searchCursor = (searchCursor - 1 + searchMatches.length) % searchMatches.length;
-    highlightCurrent(); updateSearchInfo();
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    const input = document.getElementById("searchInput");
-    document.addEventListener("keydown", e => {
-        if ((e.ctrlKey || e.metaKey) && e.key === "f") { e.preventDefault(); input.focus(); input.select(); }
-    });
-    input.addEventListener("input", () => doSearch(input.value.trim()));
-    input.addEventListener("keydown", e => {
-        if (e.key === "Enter") { e.preventDefault(); if (e.shiftKey) prevMatch(); else nextMatch(); }
-        if (e.key === "Escape") { input.value = ""; clearSearch(); input.blur(); }
-    });
-});
-
-// ── Resize observer: rebuild layout when window size changes significantly ───
-let resizeTimer = null;
-let lastNumCols = 0;
-let lastSlotsPerCol = 0;
-
+// Resize Management
 const resizeObserver = new ResizeObserver(() => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-        if (originalItems.length === 0) return;
-
-        const newNumCols = getNumCols();
-        const pagesEl = document.getElementById("pages");
-        const colH = pagesEl.offsetHeight;
-        const newSlotsPerCol = Math.max(10, Math.floor(colH / 21));
-
-        // Only rebuild if layout actually needs to change
-        if (newNumCols !== lastNumCols || newSlotsPerCol !== lastSlotsPerCol) {
-            slotsPerCol = newSlotsPerCol;
-            lastNumCols = newNumCols;
-            lastSlotsPerCol = newSlotsPerCol;
-            fullRebuild(originalItems);
-        }
-    }, 150); // debounce — don't thrash during drag-resize
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+        fullRebuild();
+    }, 200);
 });
 
 async function init() {
-    setStatus("Reading sheet…");
-    const tempPage = document.createElement("div");
-    tempPage.className = "page active";
-    tempPage.style.visibility = "hidden";
-    document.getElementById("pages").appendChild(tempPage);
-
     originalItems = await loadUniqueItems();
-
-    const colH = tempPage.offsetHeight;
-    document.getElementById("pages").removeChild(tempPage);
-    slotsPerCol = Math.max(10, Math.floor(colH / 21));
-
-    // Set initial values so resize observer knows the baseline
-    lastNumCols = getNumCols();
-    lastSlotsPerCol = slotsPerCol;
-
-    fullRebuild(originalItems);
-
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-        const col0 = document.getElementById("col-0-0");
-        if (col0 && col0.scrollHeight > col0.offsetHeight + 4) {
-            const sample = col0.querySelector(".slot");
-            if (sample) {
-                slotsPerCol = Math.floor(col0.offsetHeight / sample.offsetHeight);
-                lastSlotsPerCol = slotsPerCol;
-                fullRebuild(originalItems);
-            }
-        }
-        // Start watching for resizes after initial layout is stable
-        resizeObserver.observe(document.getElementById("pages"));
-    }));
-
-    document.getElementById("sortSelect").addEventListener("change", e => {
-        currentSort = e.target.value;
-        fullRebuild(originalItems);
-    });
-
-    setInterval(() => {
-        if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild(originalItems);
-    }, 30000);
-
+    resizeObserver.observe(document.getElementById("pages"));
+    fullRebuild();
     rollingLoop();
 }
+
+document.getElementById("sortSelect").addEventListener("change", e => {
+    currentSort = e.target.value;
+    fullRebuild();
+});
 
 init();
 </script>
