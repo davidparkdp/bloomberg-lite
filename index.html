@@ -198,24 +198,18 @@ const SHEET_URL     = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT46q9pwR
 // ── Responsive layout config ──────────────────────────────────────────────────
 // MIN_COL_WIDTH: the narrowest a column should be before we drop one.
 // Tune this to taste — 260px keeps all data cells readable without wrapping.
-const MIN_COL_WIDTH = 260;
+const MIN_COL_WIDTH = 300;
 
 function getNumCols() {
     const w = document.getElementById("pages").offsetWidth || window.innerWidth;
     return Math.max(1, Math.floor(w / MIN_COL_WIDTH));
 }
 
-// CSS grid template changes with column count:
-// narrow (1–2 cols): shrink the name cell slightly
-// wide (3+ cols): original proportions
-function getSlotGrid(numCols) {
-    if (numCols <= 2) return "48px 72px 62px 56px 54px 18px";   // tighter name
-    return "48px 82px 66px 58px 56px 20px";                     // original
-}
-
-function applySlotGrid(numCols) {
-    const grid = getSlotGrid(numCols);
-    document.documentElement.style.setProperty("--slot-grid", grid);
+// Use 1fr for the name cell so it takes whatever space remains after
+// the fixed data cells. Fixed cells sum to ~225px; name flexes with the rest.
+// This guarantees ticker + name + price + chg + pct% are always visible.
+function applySlotGrid() {
+    document.documentElement.style.setProperty("--slot-grid", "48px 1fr 62px 58px 56px 18px");
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -524,7 +518,7 @@ async function rollingLoop() {
 function fullRebuild(items) {
     // Recalculate responsive dimensions every rebuild
     numCols = getNumCols();
-    applySlotGrid(numCols);
+    applySlotGrid();
 
     const sorted = sortItems(items, currentSort);
     const layoutColumns = doLayout(sorted);
