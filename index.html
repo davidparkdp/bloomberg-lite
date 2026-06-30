@@ -173,7 +173,7 @@ body {
 </div>
 <div id="pages"></div>
 <div class="statusbar">
-    <span id="status">Loading…</span>
+    <span id="status">Loading… (Click anywhere on page if background updates pause)</span>
     <span id="counter"></span>
 </div>
 
@@ -195,6 +195,26 @@ let numPages = 0;
 let currentSort = "manual";
 let resizeTimeout;
 let worker;
+let audioCtx;
+
+// Keep tab alive using an inaudible audio wave loop (Tricks browser into active execution)
+function preventTabSleeping() {
+    if (audioCtx) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const buffer = audioCtx.createBuffer(1, 1, 22050); // Empty silent buffer
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(audioCtx.destination);
+        source.start();
+    } catch (e) {
+        console.log("Audio preservation blocked: click page once to initialize.");
+    }
+}
+
+// Automatically request audio initialization on user activity
+document.addEventListener('click', preventTabSleeping, { once: true });
 
 // Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -343,7 +363,6 @@ function fullRebuild() {
     // Restore prices
     masterList.forEach((ticker, i) => { if (quoteStore[ticker]) renderTicker(i); });
 
-    // Inform background worker of new list adjustments
     updateWorkerTickers();
 }
 
@@ -375,7 +394,7 @@ async function fetchQuote(ticker) {
     } catch (e) {}
 }
 
-// Background Worker Management
+// Worker Engine Setup
 function startBackgroundWorker() {
     const workerCode = `
         let timer = null;
@@ -421,9 +440,9 @@ function updateWorkerTickers() {
     worker.postMessage({ type: 'START', tickers: uniqueTickers, delay: CALL_DELAY_MS });
 }
 
-// Resize Management
+// Resize Guardian (Prevents blanking layout arrays on invisible frame updates)
 const resizeObserver = new ResizeObserver(() => {
-    if (document.hidden) return; // Prevent breaking layout calculation while page is running in background
+    if (document.hidden) return; 
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
         fullRebuild();
