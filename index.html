@@ -173,7 +173,7 @@ body {
 </div>
 <div id="pages"></div>
 <div class="statusbar">
-    <span id="status">Loading… (Click anywhere on page if background updates pause)</span>
+    <span id="status">Loading…</span>
     <span id="counter"></span>
 </div>
 
@@ -194,27 +194,7 @@ let masterList = [];
 let numPages = 0;
 let currentSort = "manual";
 let resizeTimeout;
-let worker;
-let audioCtx;
-
-// Keep tab alive using an inaudible audio wave loop (Tricks browser into active execution)
-function preventTabSleeping() {
-    if (audioCtx) return;
-    try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const buffer = audioCtx.createBuffer(1, 1, 22050); // Empty silent buffer
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.loop = true;
-        source.connect(audioCtx.destination);
-        source.start();
-    } catch (e) {
-        console.log("Audio preservation blocked: click page once to initialize.");
-    }
-}
-
-// Automatically request audio initialization on user activity
-document.addEventListener('click', preventTabSleeping, { once: true });
+let worker = null;
 
 // Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -362,8 +342,6 @@ function fullRebuild() {
     
     // Restore prices
     masterList.forEach((ticker, i) => { if (quoteStore[ticker]) renderTicker(i); });
-
-    updateWorkerTickers();
 }
 
 function renderTicker(idx) {
@@ -381,68 +359,94 @@ function switchPage(idx) {
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
-async function fetchQuote(ticker) {
-    const url = `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(ticker)}&token=${API_KEY}`;
-    try {
-        const res = await fetch(url);
-        if (res.status === 429) { await sleep(PAUSE_ON_429); return; }
-        const data = await res.json();
-        if (data && data.c) {
-            quoteStore[ticker] = { c:data.c, d:data.d, dp:data.dp, updatedAt:Date.now() };
-            masterList.forEach((t, i) => { if (t === ticker) renderTicker(i); });
-        }
-    } catch (e) {}
-}
-
-// Worker Engine Setup
-function startBackgroundWorker() {
-    const workerCode = `
-        let timer = null;
+// ---------------------------------------------------------------------
+// Background polling now lives in a Web Worker.
+//
+// Why: when a tab is hidden/backgrounded, browsers (Chrome especially)
+// throttle setTimeout/setInterval on the MAIN THREAD down to roughly
+// once per minute after a few minutes of inactivity. The old rollingLoop()
+// used setTimeout-based sleeps on the main thread, so polling basically
+// stalled whenever you switched away from the tab.
+//
+// Web Workers run on a separate thread and are NOT subject to that
+// page-visibility timer throttling, so a worker can keep firing fetch()
+// calls on schedule even while the tab is in the background. The worker
+// does the actual network fetching itself (workers support fetch) and
+// just posts results back to the main thread, which only has to touch
+// the DOM — no network/timing logic on the throttled thread at all.
+// ---------------------------------------------------------------------
+function buildWorkerSource() {
+    return `
+        const API_KEY = ${JSON.stringify(API_KEY)};
+        const CALL_DELAY_MS = ${CALL_DELAY_MS};
+        const PAUSE_ON_429 = ${PAUSE_ON_429};
         let tickers = [];
-        let index = 0;
-        let delay = 1200;
 
-        self.onmessage = function(e) {
-            if (e.data.type === 'START') {
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+        async function fetchQuote(ticker) {
+            const url = \`https://finnhub.io/api/v1/quote?symbol=\${encodeURIComponent(ticker)}&token=\${API_KEY}\`;
+            try {
+                const res = await fetch(url);
+                if (res.status === 429) { await sleep(PAUSE_ON_429); return; }
+                const data = await res.json();
+                if (data && typeof data.c !== 'undefined') {
+                    postMessage({ type: 'quote', ticker, data: { c: data.c, d: data.d, dp: data.dp, updatedAt: Date.now() } });
+                }
+            } catch (e) {
+                // network hiccup, just move on
+            }
+        }
+
+        async function loop() {
+            while (true) {
+                if (tickers.length === 0) { await sleep(500); continue; }
+                for (let i = 0; i < tickers.length; i++) {
+                    postMessage({ type: 'status', ticker: tickers[i], idx: i, total: tickers.length });
+                    await fetchQuote(tickers[i]);
+                    await sleep(CALL_DELAY_MS);
+                }
+            }
+        }
+
+        self.onmessage = (e) => {
+            if (e.data && e.data.type === 'tickers') {
                 tickers = e.data.tickers;
-                delay = e.data.delay;
-                index = 0;
-                
-                clearInterval(timer);
-                if (tickers.length === 0) return;
-
-                timer = setInterval(() => {
-                    self.postMessage({ type: 'FETCH', ticker: tickers[index], index: index, total: tickers.length });
-                    index = (index + 1) % tickers.length;
-                }, delay);
             }
         };
-    `;
 
-    const blob = new Blob([workerCode], { type: 'application/javascript' });
+        loop();
+    `;
+}
+
+function startWorker(tickers) {
+    if (worker) {
+        // already running, just update the ticker list
+        worker.postMessage({ type: 'tickers', tickers });
+        return;
+    }
+    const blob = new Blob([buildWorkerSource()], { type: "application/javascript" });
     worker = new Worker(URL.createObjectURL(blob));
 
-    worker.onmessage = async function(e) {
-        if (e.data.type === 'FETCH') {
-            const { ticker, index, total } = e.data;
-            document.getElementById("status").textContent = `Fetching ${ticker}...`;
-            document.getElementById("counter").textContent = `${index + 1} / ${total}`;
-            await fetchQuote(ticker);
+    worker.onmessage = (e) => {
+        const msg = e.data;
+        if (msg.type === "quote") {
+            quoteStore[msg.ticker] = msg.data;
+            masterList.forEach((t, i) => { if (t === msg.ticker) renderTicker(i); });
+        } else if (msg.type === "status") {
+            document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
+            document.getElementById("counter").textContent = `${msg.idx + 1} / ${msg.total}`;
         }
     };
+    worker.onerror = (err) => {
+        console.error("Worker error:", err);
+    };
 
-    updateWorkerTickers();
+    worker.postMessage({ type: "tickers", tickers });
 }
 
-function updateWorkerTickers() {
-    if (!worker) return;
-    const uniqueTickers = [...new Set(masterList)];
-    worker.postMessage({ type: 'START', tickers: uniqueTickers, delay: CALL_DELAY_MS });
-}
-
-// Resize Guardian (Prevents blanking layout arrays on invisible frame updates)
+// Resize Management
 const resizeObserver = new ResizeObserver(() => {
-    if (document.hidden) return; 
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
         fullRebuild();
@@ -453,7 +457,9 @@ async function init() {
     originalItems = await loadUniqueItems();
     resizeObserver.observe(document.getElementById("pages"));
     fullRebuild();
-    startBackgroundWorker();
+
+    const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
+    startWorker(uniqueTickers);
 }
 
 document.getElementById("sortSelect").addEventListener("change", e => {
