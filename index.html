@@ -194,6 +194,7 @@ let masterList = [];
 let numPages = 0;
 let currentSort = "manual";
 let resizeTimeout;
+let worker;
 
 // Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -341,6 +342,9 @@ function fullRebuild() {
     
     // Restore prices
     masterList.forEach((ticker, i) => { if (quoteStore[ticker]) renderTicker(i); });
+
+    // Inform background worker of new list adjustments
+    updateWorkerTickers();
 }
 
 function renderTicker(idx) {
@@ -371,21 +375,55 @@ async function fetchQuote(ticker) {
     } catch (e) {}
 }
 
-async function rollingLoop() {
-    while (true) {
-        const uniqueTickers = [...new Set(masterList)];
-        for (let i = 0; i < uniqueTickers.length; i++) {
-            const t = uniqueTickers[i];
-            document.getElementById("status").textContent = `Fetching ${t}...`;
-            document.getElementById("counter").textContent = `${i+1} / ${uniqueTickers.length}`;
-            await fetchQuote(t);
-            await sleep(CALL_DELAY_MS);
+// Background Worker Management
+function startBackgroundWorker() {
+    const workerCode = `
+        let timer = null;
+        let tickers = [];
+        let index = 0;
+        let delay = 1200;
+
+        self.onmessage = function(e) {
+            if (e.data.type === 'START') {
+                tickers = e.data.tickers;
+                delay = e.data.delay;
+                index = 0;
+                
+                clearInterval(timer);
+                if (tickers.length === 0) return;
+
+                timer = setInterval(() => {
+                    self.postMessage({ type: 'FETCH', ticker: tickers[index], index: index, total: tickers.length });
+                    index = (index + 1) % tickers.length;
+                }, delay);
+            }
+        };
+    `;
+
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    worker = new Worker(URL.createObjectURL(blob));
+
+    worker.onmessage = async function(e) {
+        if (e.data.type === 'FETCH') {
+            const { ticker, index, total } = e.data;
+            document.getElementById("status").textContent = `Fetching ${ticker}...`;
+            document.getElementById("counter").textContent = `${index + 1} / ${total}`;
+            await fetchQuote(ticker);
         }
-    }
+    };
+
+    updateWorkerTickers();
+}
+
+function updateWorkerTickers() {
+    if (!worker) return;
+    const uniqueTickers = [...new Set(masterList)];
+    worker.postMessage({ type: 'START', tickers: uniqueTickers, delay: CALL_DELAY_MS });
 }
 
 // Resize Management
 const resizeObserver = new ResizeObserver(() => {
+    if (document.hidden) return; // Prevent breaking layout calculation while page is running in background
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
         fullRebuild();
@@ -396,7 +434,7 @@ async function init() {
     originalItems = await loadUniqueItems();
     resizeObserver.observe(document.getElementById("pages"));
     fullRebuild();
-    rollingLoop();
+    startBackgroundWorker();
 }
 
 document.getElementById("sortSelect").addEventListener("change", e => {
