@@ -195,6 +195,9 @@ let numPages = 0;
 let currentSort = "manual";
 let resizeTimeout;
 let worker = null;
+let searchQuery = "";
+let searchMatches = [];   // array of slot ids (masterList indices) matching current query
+let searchCurrentIdx = -1; // index into searchMatches, i.e. which match is "current"
 
 // Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -342,6 +345,11 @@ function fullRebuild() {
     
     // Restore prices
     masterList.forEach((ticker, i) => { if (quoteStore[ticker]) renderTicker(i); });
+
+    // Rebuilding wipes and recreates every row, which would otherwise
+    // silently drop any active search highlighting. Re-apply it here so
+    // sort changes / resizes / live re-sorts don't clear your search.
+    if (searchQuery) applySearch(searchQuery, false);
 }
 
 function renderTicker(idx) {
@@ -358,6 +366,123 @@ function switchPage(idx) {
     document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
+
+// ---------------------------------------------------------------------
+// Search
+//
+// Previously #searchInput existed in the markup with no JS behind it
+// at all — typing did nothing. This wires it up: typing filters/
+// highlights matching rows across every page (by ticker or name),
+// Enter/Shift+Enter (or the arrows) step through matches and jump to
+// whichever page a match lives on, and Ctrl/Cmd+F is intercepted so it
+// focuses this search box instead of triggering the browser's own
+// find bar.
+// ---------------------------------------------------------------------
+function computeSearchMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const matches = [];
+    for (let sid = 0; sid < masterList.length; sid++) {
+        const meta = tickerMeta[sid];
+        if (!meta) continue;
+        if (meta.ticker.toLowerCase().includes(q) || meta.name.toLowerCase().includes(q)) {
+            matches.push(sid);
+        }
+    }
+    return matches; // sids are assigned in reading order (page -> column -> row), so this is already in visual order
+}
+
+function applySearch(query, resetToFirst = true) {
+    searchQuery = query;
+    document.querySelectorAll(".slot-data.search-match, .slot-data.search-current")
+        .forEach(el => el.classList.remove("search-match", "search-current"));
+
+    if (!query.trim()) {
+        searchMatches = [];
+        searchCurrentIdx = -1;
+        document.getElementById("searchInfo").textContent = "";
+        return;
+    }
+
+    searchMatches = computeSearchMatches(query);
+    if (resetToFirst || searchCurrentIdx < 0 || searchCurrentIdx >= searchMatches.length) {
+        searchCurrentIdx = searchMatches.length ? 0 : -1;
+    }
+
+    searchMatches.forEach(sid => {
+        const row = document.querySelector(`[data-slot-id="${sid}"]`);
+        if (row) row.classList.add("search-match");
+    });
+
+    highlightCurrentMatch();
+}
+
+function highlightCurrentMatch() {
+    const infoEl = document.getElementById("searchInfo");
+    if (!searchMatches.length) {
+        infoEl.textContent = searchQuery.trim() ? "0/0" : "";
+        return;
+    }
+    const sid = searchMatches[searchCurrentIdx];
+    const meta = tickerMeta[sid];
+    const row = document.querySelector(`[data-slot-id="${sid}"]`);
+    if (row) {
+        row.classList.add("search-current");
+        if (meta) switchPage(meta.pageIdx);
+        row.scrollIntoView({ block: "nearest" });
+    }
+    infoEl.textContent = `${searchCurrentIdx + 1}/${searchMatches.length}`;
+}
+
+function stepSearch(dir) {
+    if (!searchMatches.length) return;
+    document.querySelectorAll(".slot-data.search-current").forEach(el => el.classList.remove("search-current"));
+    searchCurrentIdx = (searchCurrentIdx + dir + searchMatches.length) % searchMatches.length;
+    highlightCurrentMatch();
+}
+
+const searchInput = document.getElementById("searchInput");
+searchInput.addEventListener("input", e => applySearch(e.target.value));
+searchInput.addEventListener("keydown", e => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        stepSearch(e.shiftKey ? -1 : 1);
+    } else if (e.key === "Escape") {
+        searchInput.value = "";
+        applySearch("");
+        searchInput.blur();
+    }
+});
+
+// Intercept Ctrl+F / Cmd+F anywhere on the page and redirect it to our
+// own search box instead of letting the browser open its native find bar.
+document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+    }
+});
+
+// ---------------------------------------------------------------------
+// Ticker hyperlink
+//
+// .cell-ticker had cursor:pointer styling but no click handler, so
+// clicking a ticker did nothing. Using delegation on #pages (rather
+// than binding per-row) means this keeps working across every
+// fullRebuild(), since rows get torn down and recreated on every
+// sort/resize.
+// ---------------------------------------------------------------------
+document.getElementById("pages").addEventListener("click", e => {
+    const cell = e.target.closest(".cell-ticker");
+    if (!cell) return;
+    const row = cell.closest(".slot-data");
+    if (!row) return;
+    const sid = row.dataset.slotId;
+    const meta = tickerMeta[sid];
+    if (!meta) return;
+    window.open(`https://finance.yahoo.com/quote/${encodeURIComponent(meta.ticker)}`, "_blank", "noopener");
+});
 
 // ---------------------------------------------------------------------
 // Background polling now lives in a Web Worker.
@@ -381,6 +506,7 @@ function buildWorkerSource() {
         const CALL_DELAY_MS = ${CALL_DELAY_MS};
         const PAUSE_ON_429 = ${PAUSE_ON_429};
         let tickers = [];
+        let restartRequested = false;
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -399,19 +525,28 @@ function buildWorkerSource() {
         }
 
         async function loop() {
+            let idx = 0;
             while (true) {
                 if (tickers.length === 0) { await sleep(500); continue; }
-                for (let i = 0; i < tickers.length; i++) {
-                    postMessage({ type: 'status', ticker: tickers[i], idx: i, total: tickers.length });
-                    await fetchQuote(tickers[i]);
-                    await sleep(CALL_DELAY_MS);
-                }
+                if (restartRequested) { idx = 0; restartRequested = false; }
+                if (idx >= tickers.length) idx = 0;
+                const t = tickers[idx];
+                postMessage({ type: 'status', ticker: t, idx, total: tickers.length });
+                await fetchQuote(t);
+                idx++;
+                await sleep(CALL_DELAY_MS);
             }
         }
 
         self.onmessage = (e) => {
-            if (e.data && e.data.type === 'tickers') {
+            if (!e.data) return;
+            if (e.data.type === 'tickers') {
                 tickers = e.data.tickers;
+            } else if (e.data.type === 'refreshNow') {
+                // Jump back to the front of the rotation so the view
+                // catches up fast after the tab was hidden/suspended,
+                // instead of waiting for the normal rotation order.
+                restartRequested = true;
             }
         };
 
@@ -445,6 +580,51 @@ function startWorker(tickers) {
     worker.postMessage({ type: "tickers", tickers });
 }
 
+// ---------------------------------------------------------------------
+// Background tab freezing workaround.
+//
+// The Worker fix stops timer THROTTLING, but Chrome (and others) go
+// further: a hidden tab with no audio/video/active connection gets
+// fully FROZEN after several minutes — no JS runs at all, in the main
+// thread OR in Workers, until you switch back. Tabs that are "audible"
+// are exempt from this freeze. So we start an inaudible (gain ~0)
+// oscillator on the first user interaction to keep the tab classified
+// as active. This has to start on a user gesture because browsers
+// block audio autoplay before any interaction.
+// ---------------------------------------------------------------------
+let audioCtx = null;
+function enableBackgroundKeepAlive() {
+    if (audioCtx) return;
+    try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        gain.gain.value = 0.00001; // effectively silent, but not literally zero
+        osc.frequency.value = 20000;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+    } catch (e) {
+        console.warn("Background keep-alive audio could not start:", e);
+    }
+}
+["click", "keydown", "touchstart"].forEach(evt => {
+    document.addEventListener(evt, enableBackgroundKeepAlive, { once: true });
+});
+
+// When the tab becomes visible again, tell the worker to jump back to
+// the front of its rotation immediately, so whatever's on screen gets
+// refreshed right away instead of waiting for the normal sweep to
+// reach it again.
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && worker) {
+        worker.postMessage({ type: "refreshNow" });
+    }
+    if (document.visibilityState === "visible" && audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+    }
+});
+
 // Resize Management
 const resizeObserver = new ResizeObserver(() => {
     clearTimeout(resizeTimeout);
@@ -466,6 +646,17 @@ document.getElementById("sortSelect").addEventListener("change", e => {
     currentSort = e.target.value;
     fullRebuild();
 });
+
+// While sorted by % change, unfetched tickers sort to the bottom of their
+// group (fallback -9999), which can make it look like a lot of prices
+// "disappeared" right after switching, since the ones that don't have
+// data yet all clump together instead of being spread out like they were
+// in manual/CSV order. Periodically re-sorting while in a % mode lets
+// newly-arrived quotes settle into their correct position as they come in,
+// instead of the view staying frozen at the moment you clicked the dropdown.
+setInterval(() => {
+    if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild();
+}, 4000);
 
 init();
 </script>
