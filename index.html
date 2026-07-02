@@ -203,6 +203,7 @@ let worker = null;
 let searchQuery = "";
 let searchMatches = [];   // array of slot ids (masterList indices) matching current query
 let searchCurrentIdx = -1; // index into searchMatches, i.e. which match is "current"
+let fetchIndexMap = {};   // ticker -> its fixed position in the fetch rotation (page-independent)
 
 // Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -218,6 +219,16 @@ function ageLabel(ts) {
     if (s < 60) return s+"s";
     if (s < 3600) return Math.floor(s/60)+"m";
     return Math.floor(s/3600)+"h";
+}
+
+// A ticker's fixed position in the fetch rotation. This is a property of the
+// ticker (set by its first appearance in the sheet), NOT of the page it's
+// displayed on — a duplicate ticker shown on three pages has the SAME fetch
+// number on all three. Surfacing it as a tooltip makes that verifiable.
+function fetchTitle(ticker) {
+    const idx = fetchIndexMap[ticker];
+    const total = Object.keys(fetchIndexMap).length;
+    return idx === undefined ? "" : `fetch #${idx + 1} of ${total}`;
 }
 
 async function loadCSV(url) {
@@ -344,7 +355,7 @@ function fullRebuild() {
                         el.dataset.slotId = sid;
                         masterList.push(slot.ticker);
                         tickerMeta[sid] = { ...slot, pageIdx: p, colIdx: c };
-                        el.innerHTML = `<div class="cell-ticker">${slot.ticker}</div><div class="cell-name">${slot.name}</div><div class="cell-price">—</div><div class="cell-chg"></div><div class="cell-pct"></div><div class="cell-age"></div>`;
+                        el.innerHTML = `<div class="cell-ticker" title="${fetchTitle(slot.ticker)}">${slot.ticker}</div><div class="cell-name">${slot.name}</div><div class="cell-price">—</div><div class="cell-chg"></div><div class="cell-pct"></div><div class="cell-age"></div>`;
                     } else el.classList.add("slot-empty");
                     colDiv.appendChild(el);
                 });
@@ -373,7 +384,7 @@ function renderTicker(idx) {
     // the sweep marker, and any active search highlight on this row.
     const keep = ["fetching", "search-match", "search-current"].filter(c => row.classList.contains(c));
     row.className = `slot slot-data ${color}${keep.length ? " " + keep.join(" ") : ""}`;
-    row.innerHTML = `<div class="cell-ticker">${meta.ticker}</div><div class="cell-name" title="${meta.name}">${meta.name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
+    row.innerHTML = `<div class="cell-ticker" title="${fetchTitle(meta.ticker)}">${meta.ticker}</div><div class="cell-name" title="${meta.name}">${meta.name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
 }
 
 function switchPage(idx) {
@@ -665,10 +676,10 @@ const resizeObserver = new ResizeObserver(() => {
 
 async function init() {
     originalItems = await loadUniqueItems();
+    const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
+    uniqueTickers.forEach((t, i) => { fetchIndexMap[t] = i; }); // fixed fetch order, computed once
     resizeObserver.observe(document.getElementById("pages"));
     fullRebuild();
-
-    const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
     startWorker(uniqueTickers);
 }
 
