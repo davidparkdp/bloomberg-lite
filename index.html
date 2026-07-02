@@ -612,6 +612,11 @@ function startWorker(tickers) {
             document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
             document.getElementById("counter").textContent = `${msg.idx + 1} / ${msg.total}`;
             highlightFetching(msg.ticker);
+            // Diagnostic: prints the exact fetch sequence as it happens. This
+            // order is fixed at load and does NOT depend on the visible page —
+            // refresh while sitting on Page 1 vs Page 4 and you'll get the
+            // identical sequence. (Remove this line to silence the log.)
+            console.log(`[fetch] #${msg.idx + 1}/${msg.total}  ${msg.ticker}`);
         }
     };
     worker.onerror = (err) => {
