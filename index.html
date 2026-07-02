@@ -152,9 +152,6 @@ body {
 .red   { color: #ff5252; }
 .slot-data.search-match { background: rgba(255,165,0,.12); }
 .slot-data.search-current { background: rgba(255,165,0,.35); }
-/* Marks whichever row the background sweep is fetching RIGHT NOW, so the
-   linear ticker-by-ticker rotation is visible instead of happening silently.
-   Purely diagnostic — delete this rule and the highlightFetching() calls to remove. */
 .slot-data.fetching { box-shadow: inset 3px 0 0 0 orange; }
 </style>
 </head>
@@ -193,17 +190,14 @@ let currentNumCols = 1;
 let slotsPerCol = 10;
 let originalItems = [];
 let quoteStore = {};
-let tickerMeta = {};
-let masterList = [];
-let numPages = 0;
+let fetchIndexMap = {};   // ticker -> its fixed position in the fetch rotation
 let currentSort = "manual";
 let currentPageIndex = 0;
 let resizeTimeout;
 let worker = null;
 let searchQuery = "";
-let searchMatches = [];   // array of slot ids (masterList indices) matching current query
-let searchCurrentIdx = -1; // index into searchMatches, i.e. which match is "current"
-let fetchIndexMap = {};   // ticker -> its fixed position in the fetch rotation (page-independent)
+let searchMatches = [];   // array of matching DOM elements or data indices
+let searchCurrentIdx = -1;
 
 // Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -221,10 +215,6 @@ function ageLabel(ts) {
     return Math.floor(s/3600)+"h";
 }
 
-// A ticker's fixed position in the fetch rotation. This is a property of the
-// ticker (set by its first appearance in the sheet), NOT of the page it's
-// displayed on — a duplicate ticker shown on three pages has the SAME fetch
-// number on all three. Surfacing it as a tooltip makes that verifiable.
 function fetchTitle(ticker) {
     const idx = fetchIndexMap[ticker];
     const total = Object.keys(fetchIndexMap).length;
@@ -274,7 +264,6 @@ function calculateLayoutDimensions() {
     const pagesEl = document.getElementById("pages");
     const h = pagesEl.offsetHeight;
     const w = pagesEl.offsetWidth;
-    
     slotsPerCol = Math.max(5, Math.floor(h / SLOT_HEIGHT));
     currentNumCols = Math.max(1, Math.floor(w / MIN_COL_WIDTH));
 }
@@ -283,7 +272,6 @@ function fullRebuild() {
     calculateLayoutDimensions();
     const sorted = sortItems(originalItems, currentSort);
     
-    // Create slot stream
     const slots = [];
     const groupSeen = new Set();
     sorted.forEach(item => {
@@ -294,7 +282,6 @@ function fullRebuild() {
         slots.push({ type: "data", ...item });
     });
 
-    // Pack columns
     const columns = [];
     let col = [];
     slots.forEach((s, i) => {
@@ -308,17 +295,9 @@ function fullRebuild() {
     while (col.length < slotsPerCol) col.push({ type: "empty" });
     columns.push(col);
 
-    numPages = Math.ceil(columns.length / currentNumCols);
-    masterList = [];
-    tickerMeta = {};
-
-    // Keep whatever page you were on instead of always snapping back to
-    // page 1. currentPageIndex only gets reset to 0 on a real page load
-    // (see the `let currentPageIndex = 0;` declaration) or if the page
-    // count shrinks below where you were.
+    let numPages = Math.ceil(columns.length / currentNumCols);
     if (currentPageIndex >= numPages) currentPageIndex = Math.max(0, numPages - 1);
 
-    // Build DOM
     const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
     tabsEl.querySelectorAll(".tab").forEach(t => t.remove());
@@ -350,11 +329,11 @@ function fullRebuild() {
                         el.classList.add("slot-heading");
                         el.innerHTML = `<div style="grid-column:1/3">${slot.text}</div><div></div><div></div><div></div><div></div>`;
                     } else if (slot.type === "data") {
-                        const sid = masterList.length;
                         el.classList.add("slot-data");
-                        el.dataset.slotId = sid;
-                        masterList.push(slot.ticker);
-                        tickerMeta[sid] = { ...slot, pageIdx: p, colIdx: c };
+                        // Crucial fix: Tag the DOM row with its actual target ticker symbol
+                        el.dataset.ticker = slot.ticker;
+                        el.dataset.name = slot.name;
+                        el.dataset.pageIdx = p; 
                         el.innerHTML = `<div class="cell-ticker" title="${fetchTitle(slot.ticker)}">${slot.ticker}</div><div class="cell-name">${slot.name}</div><div class="cell-price">—</div><div class="cell-chg"></div><div class="cell-pct"></div><div class="cell-age"></div>`;
                     } else el.classList.add("slot-empty");
                     colDiv.appendChild(el);
@@ -365,26 +344,27 @@ function fullRebuild() {
         pagesEl.appendChild(page);
     }
     
-    // Restore prices
-    masterList.forEach((ticker, i) => { if (quoteStore[ticker]) renderTicker(i); });
+    // Restore prices safely using the symbols directly
+    Object.keys(quoteStore).forEach(ticker => { renderTicker(ticker); });
 
-    // Rebuilding wipes and recreates every row, which would otherwise
-    // silently drop any active search highlighting. Re-apply it here so
-    // sort changes / resizes / live re-sorts don't clear your search.
     if (searchQuery) applySearch(searchQuery, false);
 }
 
-function renderTicker(idx) {
-    const meta = tickerMeta[idx];
-    const q = quoteStore[meta.ticker];
-    const row = document.querySelector(`[data-slot-id="${idx}"]`);
-    if (!row || !q) return;
-    const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
-    // Preserve overlay classes that a plain re-render would otherwise wipe:
-    // the sweep marker, and any active search highlight on this row.
-    const keep = ["fetching", "search-match", "search-current"].filter(c => row.classList.contains(c));
-    row.className = `slot slot-data ${color}${keep.length ? " " + keep.join(" ") : ""}`;
-    row.innerHTML = `<div class="cell-ticker" title="${fetchTitle(meta.ticker)}">${meta.ticker}</div><div class="cell-name" title="${meta.name}">${meta.name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
+function renderTicker(ticker) {
+    const q = quoteStore[ticker];
+    if (!q) return;
+    
+    // Find all physical DOM rows tied to this specific ticker across pages
+    const rows = document.querySelectorAll(`[data-ticker="${ticker}"]`);
+    rows.forEach(row => {
+        const name = row.dataset.name || "";
+        const pageIdx = row.dataset.pageIdx;
+        const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
+        const keep = ["fetching", "search-match", "search-current"].filter(c => row.classList.contains(c));
+        
+        row.className = `slot slot-data ${color}${keep.length ? " " + keep.join(" ") : ""}`;
+        row.innerHTML = `<div class="cell-ticker" title="${fetchTitle(ticker)}">${ticker}</div><div class="cell-name" title="${name}">${name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
+    });
 }
 
 function switchPage(idx) {
@@ -393,47 +373,14 @@ function switchPage(idx) {
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
 }
 
-// Marks whichever row(s) the sweep is currently fetching, so you can watch
-// the linear rotation march ticker-by-ticker in fetch order. On your visible
-// page you'll see the marker move straight down in order, then leave the page
-// entirely once the sweep moves on to tickers that live on other pages, then
-// reappear ~one full cycle later. That's the proof the queue never jumps to
-// whatever page you happen to be on — it only ever advances in fixed order.
 function highlightFetching(ticker) {
     document.querySelectorAll(".slot-data.fetching").forEach(el => el.classList.remove("fetching"));
-    masterList.forEach((t, i) => {
-        if (t === ticker) {
-            const row = document.querySelector(`[data-slot-id="${i}"]`);
-            if (row) row.classList.add("fetching");
-        }
+    document.querySelectorAll(`[data-ticker="${ticker}"]`).forEach(row => {
+        row.classList.add("fetching");
     });
 }
 
-// ---------------------------------------------------------------------
-// Search
-//
-// Previously #searchInput existed in the markup with no JS behind it
-// at all — typing did nothing. This wires it up: typing filters/
-// highlights matching rows across every page (by ticker or name),
-// Enter/Shift+Enter (or the arrows) step through matches and jump to
-// whichever page a match lives on, and Ctrl/Cmd+F is intercepted so it
-// focuses this search box instead of triggering the browser's own
-// find bar.
-// ---------------------------------------------------------------------
-function computeSearchMatches(query) {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    const matches = [];
-    for (let sid = 0; sid < masterList.length; sid++) {
-        const meta = tickerMeta[sid];
-        if (!meta) continue;
-        if (meta.ticker.toLowerCase().includes(q) || meta.name.toLowerCase().includes(q)) {
-            matches.push(sid);
-        }
-    }
-    return matches; // sids are assigned in reading order (page -> column -> row), so this is already in visual order
-}
-
+// Search Mechanics
 function applySearch(query, resetToFirst = true) {
     searchQuery = query;
     document.querySelectorAll(".slot-data.search-match, .slot-data.search-current")
@@ -446,16 +393,18 @@ function applySearch(query, resetToFirst = true) {
         return;
     }
 
-    searchMatches = computeSearchMatches(query);
+    const q = query.trim().toLowerCase();
+    searchMatches = Array.from(document.querySelectorAll(".slot-data")).filter(row => {
+        const ticker = (row.dataset.ticker || "").toLowerCase();
+        const name = (row.dataset.name || "").toLowerCase();
+        return ticker.includes(q) || name.includes(q);
+    });
+
     if (resetToFirst || searchCurrentIdx < 0 || searchCurrentIdx >= searchMatches.length) {
         searchCurrentIdx = searchMatches.length ? 0 : -1;
     }
 
-    searchMatches.forEach(sid => {
-        const row = document.querySelector(`[data-slot-id="${sid}"]`);
-        if (row) row.classList.add("search-match");
-    });
-
+    searchMatches.forEach(row => row.classList.add("search-match"));
     highlightCurrentMatch();
 }
 
@@ -465,12 +414,11 @@ function highlightCurrentMatch() {
         infoEl.textContent = searchQuery.trim() ? "0/0" : "";
         return;
     }
-    const sid = searchMatches[searchCurrentIdx];
-    const meta = tickerMeta[sid];
-    const row = document.querySelector(`[data-slot-id="${sid}"]`);
+    const row = searchMatches[searchCurrentIdx];
     if (row) {
         row.classList.add("search-current");
-        if (meta) switchPage(meta.pageIdx);
+        const pIdx = parseInt(row.dataset.pageIdx, 10);
+        if (!isNaN(pIdx)) switchPage(pIdx);
         row.scrollIntoView({ block: "nearest" });
     }
     infoEl.textContent = `${searchCurrentIdx + 1}/${searchMatches.length}`;
@@ -496,8 +444,6 @@ searchInput.addEventListener("keydown", e => {
     }
 });
 
-// Intercept Ctrl+F / Cmd+F anywhere on the page and redirect it to our
-// own search box instead of letting the browser open its native find bar.
 document.addEventListener("keydown", e => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
@@ -506,42 +452,16 @@ document.addEventListener("keydown", e => {
     }
 });
 
-// ---------------------------------------------------------------------
-// Ticker hyperlink
-//
-// .cell-ticker had cursor:pointer styling but no click handler, so
-// clicking a ticker did nothing. Using delegation on #pages (rather
-// than binding per-row) means this keeps working across every
-// fullRebuild(), since rows get torn down and recreated on every
-// sort/resize.
-// ---------------------------------------------------------------------
+// Yahoo Finance Redirect Link Delegation
 document.getElementById("pages").addEventListener("click", e => {
     const cell = e.target.closest(".cell-ticker");
     if (!cell) return;
     const row = cell.closest(".slot-data");
-    if (!row) return;
-    const sid = row.dataset.slotId;
-    const meta = tickerMeta[sid];
-    if (!meta) return;
-    window.open(`https://finance.yahoo.com/quote/${encodeURIComponent(meta.ticker)}`, "_blank", "noopener");
+    if (!row || !row.dataset.ticker) return;
+    window.open(`https://finance.yahoo.com/quote/${encodeURIComponent(row.dataset.ticker)}`, "_blank", "noopener");
 });
 
-// ---------------------------------------------------------------------
-// Background polling now lives in a Web Worker.
-//
-// Why: when a tab is hidden/backgrounded, browsers (Chrome especially)
-// throttle setTimeout/setInterval on the MAIN THREAD down to roughly
-// once per minute after a few minutes of inactivity. The old rollingLoop()
-// used setTimeout-based sleeps on the main thread, so polling basically
-// stalled whenever you switched away from the tab.
-//
-// Web Workers run on a separate thread and are NOT subject to that
-// page-visibility timer throttling, so a worker can keep firing fetch()
-// calls on schedule even while the tab is in the background. The worker
-// does the actual network fetching itself (workers support fetch) and
-// just posts results back to the main thread, which only has to touch
-// the DOM — no network/timing logic on the throttled thread at all.
-// ---------------------------------------------------------------------
+// Worker Source Definition
 function buildWorkerSource() {
     return `
         const API_KEY = ${JSON.stringify(API_KEY)};
@@ -560,16 +480,9 @@ function buildWorkerSource() {
                 if (data && typeof data.c !== 'undefined') {
                     postMessage({ type: 'quote', ticker, data: { c: data.c, d: data.d, dp: data.dp, updatedAt: Date.now() } });
                 }
-            } catch (e) {
-                // network hiccup, just move on
-            }
+            } catch (e) { }
         }
 
-        // Simple linear rotation through the full ticker universe. Each
-        // pass starts at index 0 and works through to the end, then loops.
-        // No page-based prioritization, no restarts on visibility change —
-        // the queue just runs continuously in the background from wherever
-        // it is, only resetting to 0 when the tab is refreshed.
         async function loop() {
             let idx = 0;
             while (true) {
@@ -585,9 +498,7 @@ function buildWorkerSource() {
 
         self.onmessage = (e) => {
             if (!e.data) return;
-            if (e.data.type === 'tickers') {
-                tickers = e.data.tickers;
-            }
+            if (e.data.type === 'tickers') { tickers = e.data.tickers; }
         };
 
         loop();
@@ -596,7 +507,6 @@ function buildWorkerSource() {
 
 function startWorker(tickers) {
     if (worker) {
-        // already running, just update the ticker list
         worker.postMessage({ type: 'tickers', tickers });
         return;
     }
@@ -607,37 +517,19 @@ function startWorker(tickers) {
         const msg = e.data;
         if (msg.type === "quote") {
             quoteStore[msg.ticker] = msg.data;
-            masterList.forEach((t, i) => { if (t === msg.ticker) renderTicker(i); });
+            renderTicker(msg.ticker);
         } else if (msg.type === "status") {
             document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
             document.getElementById("counter").textContent = `${msg.idx + 1} / ${msg.total}`;
             highlightFetching(msg.ticker);
-            // Diagnostic: prints the exact fetch sequence as it happens. This
-            // order is fixed at load and does NOT depend on the visible page —
-            // refresh while sitting on Page 1 vs Page 4 and you'll get the
-            // identical sequence. (Remove this line to silence the log.)
             console.log(`[fetch] #${msg.idx + 1}/${msg.total}  ${msg.ticker}`);
         }
-    };
-    worker.onerror = (err) => {
-        console.error("Worker error:", err);
     };
 
     worker.postMessage({ type: "tickers", tickers });
 }
 
-// ---------------------------------------------------------------------
-// Background tab freezing workaround.
-//
-// The Worker fix stops timer THROTTLING, but Chrome (and others) go
-// further: a hidden tab with no audio/video/active connection gets
-// fully FROZEN after several minutes — no JS runs at all, in the main
-// thread OR in Workers, until you switch back. Tabs that are "audible"
-// are exempt from this freeze. So we start an inaudible (gain ~0)
-// oscillator on the first user interaction to keep the tab classified
-// as active. This has to start on a user gesture because browsers
-// block audio autoplay before any interaction.
-// ---------------------------------------------------------------------
+// Keepalive Audios Context setup
 let audioCtx = null;
 function enableBackgroundKeepAlive() {
     if (audioCtx) return;
@@ -645,7 +537,7 @@ function enableBackgroundKeepAlive() {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
-        gain.gain.value = 0.00001; // effectively silent, but not literally zero
+        gain.gain.value = 0.00001; 
         osc.frequency.value = 20000;
         osc.connect(gain);
         gain.connect(audioCtx.destination);
@@ -658,31 +550,21 @@ function enableBackgroundKeepAlive() {
     document.addEventListener(evt, enableBackgroundKeepAlive, { once: true });
 });
 
-// Note: we intentionally do NOT reset/restart the worker's rotation on
-// visibilitychange. Restarting it every time you switch back to the tab
-// meant the queue kept jumping to index 0 instead of continuing forward,
-// so tickers later in the list rarely got reached. The worker just keeps
-// polling continuously in the background regardless of tab visibility
-// (that's the whole point of it living in a Worker); we only need to
-// resume the keep-alive audio context if the browser suspended it.
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && audioCtx && audioCtx.state === "suspended") {
         audioCtx.resume().catch(() => {});
     }
 });
 
-// Resize Management
 const resizeObserver = new ResizeObserver(() => {
     clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-        fullRebuild();
-    }, 200);
+    resizeTimeout = setTimeout(() => { fullRebuild(); }, 200);
 });
 
 async function init() {
     originalItems = await loadUniqueItems();
     const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
-    uniqueTickers.forEach((t, i) => { fetchIndexMap[t] = i; }); // fixed fetch order, computed once
+    uniqueTickers.forEach((t, i) => { fetchIndexMap[t] = i; }); 
     resizeObserver.observe(document.getElementById("pages"));
     fullRebuild();
     startWorker(uniqueTickers);
@@ -693,13 +575,6 @@ document.getElementById("sortSelect").addEventListener("change", e => {
     fullRebuild();
 });
 
-// While sorted by % change, unfetched tickers sort to the bottom of their
-// group (fallback -9999), which can make it look like a lot of prices
-// "disappeared" right after switching, since the ones that don't have
-// data yet all clump together instead of being spread out like they were
-// in manual/CSV order. Periodically re-sorting while in a % mode lets
-// newly-arrived quotes settle into their correct position as they come in,
-// instead of the view staying frozen at the moment you clicked the dropdown.
 setInterval(() => {
     if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild();
 }, 4000);
