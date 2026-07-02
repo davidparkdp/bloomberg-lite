@@ -193,6 +193,7 @@ let tickerMeta = {};
 let masterList = [];
 let numPages = 0;
 let currentSort = "manual";
+let currentPageIndex = 0;
 let resizeTimeout;
 let worker = null;
 let searchQuery = "";
@@ -296,6 +297,12 @@ function fullRebuild() {
     masterList = [];
     tickerMeta = {};
 
+    // Keep whatever page you were on instead of always snapping back to
+    // page 1. currentPageIndex only gets reset to 0 on a real page load
+    // (see the `let currentPageIndex = 0;` declaration) or if the page
+    // count shrinks below where you were.
+    if (currentPageIndex >= numPages) currentPageIndex = Math.max(0, numPages - 1);
+
     // Build DOM
     const tabsEl = document.getElementById("tabs");
     const pagesEl = document.getElementById("pages");
@@ -306,13 +313,13 @@ function fullRebuild() {
 
     for (let p = 0; p < numPages; p++) {
         const tab = document.createElement("button");
-        tab.className = "tab" + (p === 0 ? " active" : "");
+        tab.className = "tab" + (p === currentPageIndex ? " active" : "");
         tab.textContent = `PAGE ${p+1}`;
         tab.onclick = () => switchPage(p);
         tabsEl.insertBefore(tab, searchWrap);
 
         const page = document.createElement("div");
-        page.className = "page" + (p === 0 ? " active" : "");
+        page.className = "page" + (p === currentPageIndex ? " active" : "");
         page.id = `page-${p}`;
         
         for (let c = 0; c < currentNumCols; c++) {
@@ -350,6 +357,8 @@ function fullRebuild() {
     // silently drop any active search highlighting. Re-apply it here so
     // sort changes / resizes / live re-sorts don't clear your search.
     if (searchQuery) applySearch(searchQuery, false);
+
+    sendPriorityTickers();
 }
 
 function renderTicker(idx) {
@@ -363,8 +372,19 @@ function renderTicker(idx) {
 }
 
 function switchPage(idx) {
+    currentPageIndex = idx;
     document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+    sendPriorityTickers();
+}
+
+function sendPriorityTickers() {
+    if (!worker) return;
+    const visible = new Set();
+    Object.values(tickerMeta).forEach(meta => {
+        if (meta.pageIdx === currentPageIndex) visible.add(meta.ticker);
+    });
+    worker.postMessage({ type: "priority", tickers: [...visible] });
 }
 
 // ---------------------------------------------------------------------
@@ -505,8 +525,8 @@ function buildWorkerSource() {
         const API_KEY = ${JSON.stringify(API_KEY)};
         const CALL_DELAY_MS = ${CALL_DELAY_MS};
         const PAUSE_ON_429 = ${PAUSE_ON_429};
-        let tickers = [];
-        let restartRequested = false;
+        let tickers = [];        // full universe, background rotation
+        let priorityTickers = []; // tickers on whatever page is currently visible
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -524,16 +544,34 @@ function buildWorkerSource() {
             }
         }
 
+        // With a large universe of tickers, Finnhub's free-tier rate limit
+        // (roughly 60 calls/minute) means one full sweep of everything can
+        // take several minutes no matter what — there's no way around that
+        // ceiling without a higher-tier API plan. What we CAN do is spend a
+        // bigger share of that fixed budget on whatever page is actually on
+        // screen right now, so the tickers you're looking at refresh much
+        // more often than the ones you're not, instead of the poller
+        // treating every ticker equally regardless of what's visible.
         async function loop() {
-            let idx = 0;
+            let bgIdx = 0, prIdx = 0, tick = 0;
             while (true) {
                 if (tickers.length === 0) { await sleep(500); continue; }
-                if (restartRequested) { idx = 0; restartRequested = false; }
-                if (idx >= tickers.length) idx = 0;
-                const t = tickers[idx];
-                postMessage({ type: 'status', ticker: t, idx, total: tickers.length });
-                await fetchQuote(t);
-                idx++;
+
+                let ticker;
+                // 2 out of every 3 fetches come from the visible page (if any),
+                // the 3rd keeps the full background rotation moving forward
+                // so everything eventually gets covered.
+                if (priorityTickers.length > 0 && tick % 3 !== 2) {
+                    if (prIdx >= priorityTickers.length) prIdx = 0;
+                    ticker = priorityTickers[prIdx++];
+                } else {
+                    if (bgIdx >= tickers.length) bgIdx = 0;
+                    ticker = tickers[bgIdx++];
+                }
+                tick++;
+
+                postMessage({ type: 'status', ticker, idx: bgIdx, total: tickers.length });
+                await fetchQuote(ticker);
                 await sleep(CALL_DELAY_MS);
             }
         }
@@ -542,11 +580,8 @@ function buildWorkerSource() {
             if (!e.data) return;
             if (e.data.type === 'tickers') {
                 tickers = e.data.tickers;
-            } else if (e.data.type === 'refreshNow') {
-                // Jump back to the front of the rotation so the view
-                // catches up fast after the tab was hidden/suspended,
-                // instead of waiting for the normal rotation order.
-                restartRequested = true;
+            } else if (e.data.type === 'priority') {
+                priorityTickers = e.data.tickers;
             }
         };
 
@@ -640,6 +675,7 @@ async function init() {
 
     const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
     startWorker(uniqueTickers);
+    sendPriorityTickers(); // worker didn't exist yet during fullRebuild()'s call, so send it now
 }
 
 document.getElementById("sortSelect").addEventListener("change", e => {
