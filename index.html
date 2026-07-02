@@ -612,14 +612,14 @@ function enableBackgroundKeepAlive() {
     document.addEventListener(evt, enableBackgroundKeepAlive, { once: true });
 });
 
-// When the tab becomes visible again, tell the worker to jump back to
-// the front of its rotation immediately, so whatever's on screen gets
-// refreshed right away instead of waiting for the normal sweep to
-// reach it again.
+// Note: we intentionally do NOT reset/restart the worker's rotation on
+// visibilitychange. Restarting it every time you switch back to the tab
+// meant the queue kept jumping to index 0 instead of continuing forward,
+// so tickers later in the list rarely got reached. The worker just keeps
+// polling continuously in the background regardless of tab visibility
+// (that's the whole point of it living in a Worker); we only need to
+// resume the keep-alive audio context if the browser suspended it.
 document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && worker) {
-        worker.postMessage({ type: "refreshNow" });
-    }
     if (document.visibilityState === "visible" && audioCtx && audioCtx.state === "suspended") {
         audioCtx.resume().catch(() => {});
     }
