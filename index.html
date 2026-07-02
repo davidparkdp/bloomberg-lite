@@ -384,7 +384,18 @@ function sendPriorityTickers() {
     Object.values(tickerMeta).forEach(meta => {
         if (meta.pageIdx === currentPageIndex) visible.add(meta.ticker);
     });
-    worker.postMessage({ type: "priority", tickers: [...visible] });
+    // Put tickers that have NEVER been fetched at the front of the list.
+    // Switching sort mode or pages can suddenly surface a completely
+    // different set of tickers on screen — ones that were sitting
+    // un-prioritized on some other page a moment ago. Without this,
+    // the worker's priority round-robin treats a ticker you've had
+    // data for the whole time the same as one you've never seen,
+    // which is what made switching to % Chg look like data vanished:
+    // you'd landed on a fresh page of tickers nobody had fetched yet.
+    const unfetched = [];
+    const fetched = [];
+    visible.forEach(t => (quoteStore[t] ? fetched : unfetched).push(t));
+    worker.postMessage({ type: "priority", tickers: [...unfetched, ...fetched] });
 }
 
 // ---------------------------------------------------------------------
@@ -558,10 +569,12 @@ function buildWorkerSource() {
                 if (tickers.length === 0) { await sleep(500); continue; }
 
                 let ticker;
-                // 2 out of every 3 fetches come from the visible page (if any),
-                // the 3rd keeps the full background rotation moving forward
-                // so everything eventually gets covered.
-                if (priorityTickers.length > 0 && tick % 3 !== 2) {
+                // 4 out of every 5 fetches come from the visible page (if any),
+                // the 5th keeps the full background rotation moving forward so
+                // everything eventually gets covered. Since the main thread
+                // sends the priority list with never-fetched tickers first,
+                // this burns through a freshly-exposed page's gaps quickly.
+                if (priorityTickers.length > 0 && tick % 5 !== 4) {
                     if (prIdx >= priorityTickers.length) prIdx = 0;
                     ticker = priorityTickers[prIdx++];
                 } else {
@@ -693,6 +706,12 @@ document.getElementById("sortSelect").addEventListener("change", e => {
 setInterval(() => {
     if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild();
 }, 4000);
+
+// Lighter-weight than a full rebuild: just re-send the priority list (with
+// never-fetched tickers pushed to the front) every few seconds, in any
+// sort mode. This is what keeps a newly-visible page's gaps closing fast
+// without waiting for a full DOM rebuild to trigger it.
+setInterval(sendPriorityTickers, 3000);
 
 init();
 </script>
