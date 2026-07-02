@@ -14,7 +14,7 @@ body {
     color: #00ffcc;
     font-family: monospace;
     font-size: 13px;
-    overflow: hidden; /* Prevent body scrollbars during resize */
+    overflow: hidden;
 }
 .header {
     flex-shrink: 0;
@@ -30,7 +30,7 @@ body {
 .tabs {
     flex-shrink: 0;
     display: flex;
-    flex-wrap: wrap; /* Allow tabs to wrap if many pages exist */
+    flex-wrap: wrap;
     gap: 2px;
     padding: 4px 12px;
     background: #111;
@@ -100,7 +100,7 @@ body {
 .page.active { display: flex; }
 .col {
     flex: 1;
-    min-width: 330px; /* Minimum width to prevent row squishing */
+    min-width: 330px;
     overflow: hidden;
     padding: 0 3px;
     border-right: 1px solid #1a1a1a;
@@ -190,16 +190,15 @@ let currentNumCols = 1;
 let slotsPerCol = 10;
 let originalItems = [];
 let quoteStore = {};
-let fetchIndexMap = {};   // ticker -> its fixed position in the fetch rotation
+let fetchIndexMap = {};   // Maps ticker directly to its immutable position in the spreadsheet
 let currentSort = "manual";
 let currentPageIndex = 0;
 let resizeTimeout;
 let worker = null;
 let searchQuery = "";
-let searchMatches = [];   // array of matching DOM elements or data indices
+let searchMatches = [];   
 let searchCurrentIdx = -1;
 
-// Utility functions
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function updateClock() {
     const now = new Date();
@@ -330,7 +329,6 @@ function fullRebuild() {
                         el.innerHTML = `<div style="grid-column:1/3">${slot.text}</div><div></div><div></div><div></div><div></div>`;
                     } else if (slot.type === "data") {
                         el.classList.add("slot-data");
-                        // Crucial fix: Tag the DOM row with its actual target ticker symbol
                         el.dataset.ticker = slot.ticker;
                         el.dataset.name = slot.name;
                         el.dataset.pageIdx = p; 
@@ -344,7 +342,6 @@ function fullRebuild() {
         pagesEl.appendChild(page);
     }
     
-    // Restore prices safely using the symbols directly
     Object.keys(quoteStore).forEach(ticker => { renderTicker(ticker); });
 
     if (searchQuery) applySearch(searchQuery, false);
@@ -354,11 +351,9 @@ function renderTicker(ticker) {
     const q = quoteStore[ticker];
     if (!q) return;
     
-    // Find all physical DOM rows tied to this specific ticker across pages
     const rows = document.querySelectorAll(`[data-ticker="${ticker}"]`);
     rows.forEach(row => {
         const name = row.dataset.name || "";
-        const pageIdx = row.dataset.pageIdx;
         const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
         const keep = ["fetching", "search-match", "search-current"].filter(c => row.classList.contains(c));
         
@@ -452,7 +447,6 @@ document.addEventListener("keydown", e => {
     }
 });
 
-// Yahoo Finance Redirect Link Delegation
 document.getElementById("pages").addEventListener("click", e => {
     const cell = e.target.closest(".cell-ticker");
     if (!cell) return;
@@ -489,6 +483,7 @@ function buildWorkerSource() {
                 if (tickers.length === 0) { await sleep(500); continue; }
                 if (idx >= tickers.length) idx = 0;
                 const ticker = tickers[idx];
+                // Send exactly what the worker is working on back to the main thread
                 postMessage({ type: 'status', ticker, idx, total: tickers.length });
                 await fetchQuote(ticker);
                 idx++;
@@ -505,11 +500,10 @@ function buildWorkerSource() {
     `;
 }
 
+// Fixed Worker Initialization
 function startWorker(tickers) {
-    if (worker) {
-        worker.postMessage({ type: 'tickers', tickers });
-        return;
-    }
+    if (worker) return; // Prevent any structural re-writes or resets of the pipeline array
+    
     const blob = new Blob([buildWorkerSource()], { type: "application/javascript" });
     worker = new Worker(URL.createObjectURL(blob));
 
@@ -519,6 +513,7 @@ function startWorker(tickers) {
             quoteStore[msg.ticker] = msg.data;
             renderTicker(msg.ticker);
         } else if (msg.type === "status") {
+            // Locks the counter specifically to the index the worker tracks from the spreadsheet list
             document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
             document.getElementById("counter").textContent = `${msg.idx + 1} / ${msg.total}`;
             highlightFetching(msg.ticker);
@@ -529,7 +524,6 @@ function startWorker(tickers) {
     worker.postMessage({ type: "tickers", tickers });
 }
 
-// Keepalive Audios Context setup
 let audioCtx = null;
 function enableBackgroundKeepAlive() {
     if (audioCtx) return;
@@ -563,11 +557,16 @@ const resizeObserver = new ResizeObserver(() => {
 
 async function init() {
     originalItems = await loadUniqueItems();
-    const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
-    uniqueTickers.forEach((t, i) => { fetchIndexMap[t] = i; }); 
+    
+    // Hard-freeze the list directly matching the spreadsheet layout order
+    const spreadsheetOrder = [...new Set(originalItems.map(item => item.ticker))];
+    spreadsheetOrder.forEach((t, i) => { fetchIndexMap[t] = i; }); 
+    
     resizeObserver.observe(document.getElementById("pages"));
     fullRebuild();
-    startWorker(uniqueTickers);
+    
+    // Boot up the loop using the spreadsheet sequencing exactly once
+    startWorker(spreadsheetOrder);
 }
 
 document.getElementById("sortSelect").addEventListener("change", e => {
