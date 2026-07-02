@@ -357,8 +357,6 @@ function fullRebuild() {
     // silently drop any active search highlighting. Re-apply it here so
     // sort changes / resizes / live re-sorts don't clear your search.
     if (searchQuery) applySearch(searchQuery, false);
-
-    sendPriorityTickers();
 }
 
 function renderTicker(idx) {
@@ -375,27 +373,6 @@ function switchPage(idx) {
     currentPageIndex = idx;
     document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
-    sendPriorityTickers();
-}
-
-function sendPriorityTickers() {
-    if (!worker) return;
-    const visible = new Set();
-    Object.values(tickerMeta).forEach(meta => {
-        if (meta.pageIdx === currentPageIndex) visible.add(meta.ticker);
-    });
-    // Put tickers that have NEVER been fetched at the front of the list.
-    // Switching sort mode or pages can suddenly surface a completely
-    // different set of tickers on screen — ones that were sitting
-    // un-prioritized on some other page a moment ago. Without this,
-    // the worker's priority round-robin treats a ticker you've had
-    // data for the whole time the same as one you've never seen,
-    // which is what made switching to % Chg look like data vanished:
-    // you'd landed on a fresh page of tickers nobody had fetched yet.
-    const unfetched = [];
-    const fetched = [];
-    visible.forEach(t => (quoteStore[t] ? fetched : unfetched).push(t));
-    worker.postMessage({ type: "priority", tickers: [...unfetched, ...fetched] });
 }
 
 // ---------------------------------------------------------------------
@@ -536,8 +513,7 @@ function buildWorkerSource() {
         const API_KEY = ${JSON.stringify(API_KEY)};
         const CALL_DELAY_MS = ${CALL_DELAY_MS};
         const PAUSE_ON_429 = ${PAUSE_ON_429};
-        let tickers = [];        // full universe, background rotation
-        let priorityTickers = []; // tickers on whatever page is currently visible
+        let tickers = [];
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -555,36 +531,20 @@ function buildWorkerSource() {
             }
         }
 
-        // With a large universe of tickers, Finnhub's free-tier rate limit
-        // (roughly 60 calls/minute) means one full sweep of everything can
-        // take several minutes no matter what — there's no way around that
-        // ceiling without a higher-tier API plan. What we CAN do is spend a
-        // bigger share of that fixed budget on whatever page is actually on
-        // screen right now, so the tickers you're looking at refresh much
-        // more often than the ones you're not, instead of the poller
-        // treating every ticker equally regardless of what's visible.
+        // Simple linear rotation through the full ticker universe. Each
+        // pass starts at index 0 and works through to the end, then loops.
+        // No page-based prioritization, no restarts on visibility change —
+        // the queue just runs continuously in the background from wherever
+        // it is, only resetting to 0 when the tab is refreshed.
         async function loop() {
-            let bgIdx = 0, prIdx = 0, tick = 0;
+            let idx = 0;
             while (true) {
                 if (tickers.length === 0) { await sleep(500); continue; }
-
-                let ticker;
-                // 4 out of every 5 fetches come from the visible page (if any),
-                // the 5th keeps the full background rotation moving forward so
-                // everything eventually gets covered. Since the main thread
-                // sends the priority list with never-fetched tickers first,
-                // this burns through a freshly-exposed page's gaps quickly.
-                if (priorityTickers.length > 0 && tick % 5 !== 4) {
-                    if (prIdx >= priorityTickers.length) prIdx = 0;
-                    ticker = priorityTickers[prIdx++];
-                } else {
-                    if (bgIdx >= tickers.length) bgIdx = 0;
-                    ticker = tickers[bgIdx++];
-                }
-                tick++;
-
-                postMessage({ type: 'status', ticker, idx: bgIdx, total: tickers.length });
+                if (idx >= tickers.length) idx = 0;
+                const ticker = tickers[idx];
+                postMessage({ type: 'status', ticker, idx, total: tickers.length });
                 await fetchQuote(ticker);
+                idx++;
                 await sleep(CALL_DELAY_MS);
             }
         }
@@ -593,8 +553,6 @@ function buildWorkerSource() {
             if (!e.data) return;
             if (e.data.type === 'tickers') {
                 tickers = e.data.tickers;
-            } else if (e.data.type === 'priority') {
-                priorityTickers = e.data.tickers;
             }
         };
 
@@ -688,7 +646,6 @@ async function init() {
 
     const uniqueTickers = [...new Set(originalItems.map(item => item.ticker))];
     startWorker(uniqueTickers);
-    sendPriorityTickers(); // worker didn't exist yet during fullRebuild()'s call, so send it now
 }
 
 document.getElementById("sortSelect").addEventListener("change", e => {
@@ -706,12 +663,6 @@ document.getElementById("sortSelect").addEventListener("change", e => {
 setInterval(() => {
     if (currentSort === "pct" || currentSort === "pct-ex") fullRebuild();
 }, 4000);
-
-// Lighter-weight than a full rebuild: just re-send the priority list (with
-// never-fetched tickers pushed to the front) every few seconds, in any
-// sort mode. This is what keeps a newly-visible page's gaps closing fast
-// without waiting for a full DOM rebuild to trigger it.
-setInterval(sendPriorityTickers, 3000);
 
 init();
 </script>
