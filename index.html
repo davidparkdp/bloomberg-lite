@@ -190,7 +190,7 @@ let currentNumCols = 1;
 let slotsPerCol = 10;
 let originalItems = [];
 let quoteStore = {};
-let fetchIndexMap = {};   // Maps ticker directly to its immutable position in the spreadsheet
+let fetchIndexMap = {};   // Maps ticker directly to its immutable sequence number
 let currentSort = "manual";
 let currentPageIndex = 0;
 let resizeTimeout;
@@ -217,7 +217,7 @@ function ageLabel(ts) {
 function fetchTitle(ticker) {
     const idx = fetchIndexMap[ticker];
     const total = Object.keys(fetchIndexMap).length;
-    return idx === undefined ? "" : `fetch #${idx + 1} of ${total}`;
+    return idx === undefined ? "" : `Spreadsheet Sequence: #${idx + 1} of ${total}`;
 }
 
 async function loadCSV(url) {
@@ -455,13 +455,14 @@ document.getElementById("pages").addEventListener("click", e => {
     window.open(`https://finance.yahoo.com/quote/${encodeURIComponent(row.dataset.ticker)}`, "_blank", "noopener");
 });
 
-// Worker Source Definition
+// Worker Engine with Explicit Number Mapping
 function buildWorkerSource() {
     return `
         const API_KEY = ${JSON.stringify(API_KEY)};
         const CALL_DELAY_MS = ${CALL_DELAY_MS};
         const PAUSE_ON_429 = ${PAUSE_ON_429};
-        let tickers = [];
+        let mappedRegistry = {}; // Numeric Key -> Ticker string
+        let totalCount = 0;
 
         const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -478,31 +479,36 @@ function buildWorkerSource() {
         }
 
         async function loop() {
-            let idx = 0;
+            let currentGlobalIndex = 0;
             while (true) {
-                if (tickers.length === 0) { await sleep(500); continue; }
-                if (idx >= tickers.length) idx = 0;
-                const ticker = tickers[idx];
-                // Send exactly what the worker is working on back to the main thread
-                postMessage({ type: 'status', ticker, idx, total: tickers.length });
-                await fetchQuote(ticker);
-                idx++;
+                if (totalCount === 0) { await sleep(500); continue; }
+                if (currentGlobalIndex >= totalCount) currentGlobalIndex = 0;
+                
+                const ticker = mappedRegistry[currentGlobalIndex];
+                if (ticker) {
+                    // Send absolute numeric index back to the main thread
+                    postMessage({ type: 'status', ticker, numericIndex: currentGlobalIndex, total: totalCount });
+                    await fetchQuote(ticker);
+                }
+                
+                currentGlobalIndex++;
                 await sleep(CALL_DELAY_MS);
             }
         }
 
         self.onmessage = (e) => {
-            if (!e.data) return;
-            if (e.data.type === 'tickers') { tickers = e.data.tickers; }
+            if (e.data && e.data.type === 'initializeRegistry') {
+                mappedRegistry = e.data.registry;
+                totalCount = e.data.total;
+            }
         };
 
         loop();
     `;
 }
 
-// Fixed Worker Initialization
-function startWorker(tickers) {
-    if (worker) return; // Prevent any structural re-writes or resets of the pipeline array
+function startWorkerWithRegistry(registryObj, total) {
+    if (worker) return; 
     
     const blob = new Blob([buildWorkerSource()], { type: "application/javascript" });
     worker = new Worker(URL.createObjectURL(blob));
@@ -513,15 +519,14 @@ function startWorker(tickers) {
             quoteStore[msg.ticker] = msg.data;
             renderTicker(msg.ticker);
         } else if (msg.type === "status") {
-            // Locks the counter specifically to the index the worker tracks from the spreadsheet list
+            // Force the status labels to read directly from the absolute number emitted by the worker
             document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
-            document.getElementById("counter").textContent = `${msg.idx + 1} / ${msg.total}`;
+            document.getElementById("counter").textContent = `${msg.numericIndex + 1} / ${msg.total}`;
             highlightFetching(msg.ticker);
-            console.log(`[fetch] #${msg.idx + 1}/${msg.total}  ${msg.ticker}`);
         }
     };
 
-    worker.postMessage({ type: "tickers", tickers });
+    worker.postMessage({ type: "initializeRegistry", registry: registryObj, total: total });
 }
 
 let audioCtx = null;
@@ -558,15 +563,20 @@ const resizeObserver = new ResizeObserver(() => {
 async function init() {
     originalItems = await loadUniqueItems();
     
-    // Hard-freeze the list directly matching the spreadsheet layout order
     const spreadsheetOrder = [...new Set(originalItems.map(item => item.ticker))];
-    spreadsheetOrder.forEach((t, i) => { fetchIndexMap[t] = i; }); 
+    
+    // Explicitly construct a clean key-value object map based strictly on spreadsheet position
+    const workerRegistry = {};
+    spreadsheetOrder.forEach((ticker, index) => {
+        fetchIndexMap[ticker] = index;       // UI-side reference map
+        workerRegistry[index] = ticker;      // Worker-side explicit index assignment
+    }); 
     
     resizeObserver.observe(document.getElementById("pages"));
     fullRebuild();
     
-    // Boot up the loop using the spreadsheet sequencing exactly once
-    startWorker(spreadsheetOrder);
+    // Pass the absolute number map directly to the engine
+    startWorkerWithRegistry(workerRegistry, spreadsheetOrder.length);
 }
 
 document.getElementById("sortSelect").addEventListener("change", e => {
