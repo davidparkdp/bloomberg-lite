@@ -152,6 +152,10 @@ body {
 .red   { color: #ff5252; }
 .slot-data.search-match { background: rgba(255,165,0,.12); }
 .slot-data.search-current { background: rgba(255,165,0,.35); }
+/* Marks whichever row the background sweep is fetching RIGHT NOW, so the
+   linear ticker-by-ticker rotation is visible instead of happening silently.
+   Purely diagnostic — delete this rule and the highlightFetching() calls to remove. */
+.slot-data.fetching { box-shadow: inset 3px 0 0 0 orange; }
 </style>
 </head>
 <body>
@@ -365,7 +369,10 @@ function renderTicker(idx) {
     const row = document.querySelector(`[data-slot-id="${idx}"]`);
     if (!row || !q) return;
     const up = q.d >= 0, color = up ? "green" : "red", sign = up ? "+" : "";
-    row.className = `slot slot-data ${color}`;
+    // Preserve overlay classes that a plain re-render would otherwise wipe:
+    // the sweep marker, and any active search highlight on this row.
+    const keep = ["fetching", "search-match", "search-current"].filter(c => row.classList.contains(c));
+    row.className = `slot slot-data ${color}${keep.length ? " " + keep.join(" ") : ""}`;
     row.innerHTML = `<div class="cell-ticker">${meta.ticker}</div><div class="cell-name" title="${meta.name}">${meta.name}</div><div class="cell-price">${q.c.toFixed(2)}</div><div class="cell-chg">${sign}${q.d.toFixed(2)}</div><div class="cell-pct">${sign}${q.dp.toFixed(2)}%</div><div class="cell-age">${ageLabel(q.updatedAt)}</div>`;
 }
 
@@ -373,6 +380,22 @@ function switchPage(idx) {
     currentPageIndex = idx;
     document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", i===idx));
     document.querySelectorAll(".page").forEach((p,i) => p.classList.toggle("active", i===idx));
+}
+
+// Marks whichever row(s) the sweep is currently fetching, so you can watch
+// the linear rotation march ticker-by-ticker in fetch order. On your visible
+// page you'll see the marker move straight down in order, then leave the page
+// entirely once the sweep moves on to tickers that live on other pages, then
+// reappear ~one full cycle later. That's the proof the queue never jumps to
+// whatever page you happen to be on — it only ever advances in fixed order.
+function highlightFetching(ticker) {
+    document.querySelectorAll(".slot-data.fetching").forEach(el => el.classList.remove("fetching"));
+    masterList.forEach((t, i) => {
+        if (t === ticker) {
+            const row = document.querySelector(`[data-slot-id="${i}"]`);
+            if (row) row.classList.add("fetching");
+        }
+    });
 }
 
 // ---------------------------------------------------------------------
@@ -577,6 +600,7 @@ function startWorker(tickers) {
         } else if (msg.type === "status") {
             document.getElementById("status").textContent = `Fetching ${msg.ticker}...`;
             document.getElementById("counter").textContent = `${msg.idx + 1} / ${msg.total}`;
+            highlightFetching(msg.ticker);
         }
     };
     worker.onerror = (err) => {
